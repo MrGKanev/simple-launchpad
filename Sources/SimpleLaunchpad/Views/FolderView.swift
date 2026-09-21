@@ -10,7 +10,38 @@ struct FolderView: View {
     let onSelect: (AppInfo) -> Void
     let onRemove: (AppInfo) -> Void
     var onUninstall: ((AppInfo) -> Void)? = nil
-    @Environment(\.dismiss) private var dismiss
+    let onRename: (String) -> Void
+    // Lets the caller (`PageView`, via `LaunchpadStore`) suppress the global
+    // arrow-key/Return handling while the name is being typed — otherwise
+    // Return would trigger "launch the selected icon" instead of committing
+    // the rename, and Left/Right would move icon selection instead of the
+    // text cursor. See `OverlayWindowController`.
+    var onEditingNameChanged: ((Bool) -> Void)? = nil
+    // Cmd/Shift-click multi-select for the icons inside this folder too —
+    // see `AppIconView` and `LaunchpadStore.selectedBundleIdentifiers`.
+    var selectedBundleIdentifiers: Set<String> = []
+    var onToggleSelectApp: ((AppInfo) -> Void)? = nil
+    var onBulkRemove: (() -> Void)? = nil
+    var onBulkUninstall: (() -> Void)? = nil
+    // No longer a `.sheet` (see `PageView`, which now overlays this directly
+    // so it can use a custom scale+fade transition) so there's no
+    // presentation for `@Environment(\.dismiss)` to dismiss — the caller
+    // supplies how to close instead.
+    let onDismiss: () -> Void
+
+    // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
+    // attribute — see the comment in LaunchpadView.swift for why (this SDK's
+    // `@State` macro plugin isn't available under Xcode Command Line Tools).
+    private var isEditingNameState = SwiftUI.State(wrappedValue: false)
+    private var isEditingName: Bool {
+        get { isEditingNameState.wrappedValue }
+        nonmutating set { isEditingNameState.wrappedValue = newValue }
+    }
+    private var editedNameState = SwiftUI.State(wrappedValue: "")
+    private var editedName: String {
+        get { editedNameState.wrappedValue }
+        nonmutating set { editedNameState.wrappedValue = newValue }
+    }
 
     private let columnCount = 5
     private let maxVisibleRows = 4
@@ -63,12 +94,17 @@ struct FolderView: View {
         ZStack {
             Color.black.opacity(0.85)
                 .contentShape(Rectangle())
-                .onTapGesture { dismiss() }
+                .onTapGesture {
+                    if isEditingName {
+                        commitRename()
+                    } else {
+                        onDismiss()
+                    }
+                }
 
             VStack(spacing: titleSpacing) {
-                Text(folder.name)
-                    .font(.title2)
-                    .foregroundColor(.white)
+                title
+
                 // A folder like the auto-generated "Other" one can hold more apps
                 // than fit in `maxVisibleRows` — past that it scrolls.
                 ScrollView {
@@ -79,10 +115,15 @@ struct FolderView: View {
                                 metrics: metrics,
                                 onTap: {
                                     onSelect(app)
-                                    dismiss()
+                                    onDismiss()
                                 },
                                 onRemove: { onRemove(app) },
-                                onUninstall: onUninstall.map { callback in { callback(app) } }
+                                onUninstall: onUninstall.map { callback in { callback(app) } },
+                                isMultiSelected: selectedBundleIdentifiers.contains(app.bundleIdentifier),
+                                selectionCount: selectedBundleIdentifiers.count,
+                                onToggleSelect: onToggleSelectApp.map { callback in { callback(app) } },
+                                onBulkRemove: onBulkRemove,
+                                onBulkUninstall: onBulkUninstall
                             )
                         }
                     }
@@ -93,6 +134,36 @@ struct FolderView: View {
             .padding(outerPadding)
         }
         .frame(width: popupWidth, height: popupHeight)
+    }
+
+    // Real macOS Launchpad: click the folder's own name (while it's open)
+    // to rename it in place.
+    @ViewBuilder
+    private var title: some View {
+        if isEditingName {
+            TextField("Folder Name", text: Binding(get: { editedName }, set: { editedName = $0 }))
+                .textFieldStyle(.plain)
+                .font(.title2)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .frame(width: popupWidth * 0.6)
+                .onSubmit { commitRename() }
+        } else {
+            Text(folder.name)
+                .font(.title2)
+                .foregroundColor(.white)
+                .onTapGesture {
+                    editedName = folder.name
+                    isEditingName = true
+                    onEditingNameChanged?(true)
+                }
+        }
+    }
+
+    private func commitRename() {
+        isEditingName = false
+        onEditingNameChanged?(false)
+        onRename(editedName)
     }
 }
 

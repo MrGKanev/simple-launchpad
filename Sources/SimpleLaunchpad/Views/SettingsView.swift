@@ -1,8 +1,10 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     // `@ObservedObject` (unlike `@State`) is a plain property wrapper, not
     // macro-based, so the attribute works fine under this project's toolchain.
+    @ObservedObject var store: LaunchpadStore
     @ObservedObject var preferences: AppPreferences
 
     // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
@@ -81,9 +83,32 @@ struct SettingsView: View {
                      destination: URL(string: "https://github.com/MrGKanev/simple-launchpad")!)
                     .font(.caption)
             }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 4) {
+                Button("Reset Layout…", role: .destructive) {
+                    confirmAndResetLayout()
+                }
+                Text("Rebuilds the grid alphabetically — discards custom folders and ordering.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(24)
         .frame(width: 320, alignment: .leading)
+    }
+
+    private func confirmAndResetLayout() {
+        let alert = NSAlert()
+        alert.messageText = "Reset the Launchpad layout?"
+        alert.informativeText = "This rebuilds the grid alphabetically and breaks up every folder. This can't be undone."
+        alert.alertStyle = .warning
+        let resetButton = alert.addButton(withTitle: "Reset Layout")
+        resetButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.resetLayout()
     }
 
     // A found update downloads and installs itself immediately — the app

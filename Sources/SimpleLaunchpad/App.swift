@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.overlayController.hide()
         })
 
-        settingsWindowController = SettingsWindowController(preferences: preferences)
+        settingsWindowController = SettingsWindowController(store: store, preferences: preferences)
 
         statusItemController = StatusItemController(
             preferences: preferences,

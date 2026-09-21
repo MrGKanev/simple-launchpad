@@ -14,7 +14,18 @@ struct LaunchpadView: View {
                     .ignoresSafeArea()
 
                 Color.black.opacity(0.001) // catches taps on the empty background to dismiss
-                    .onTapGesture { onDismiss() }
+                    .onTapGesture {
+                        // A folder is no longer a modal sheet — a click
+                        // outside its small box but still on this same
+                        // background would otherwise fall all the way
+                        // through to here and close the whole overlay
+                        // instead of just the folder.
+                        if store.openFolder != nil {
+                            store.openFolder = nil
+                        } else {
+                            onDismiss()
+                        }
+                    }
 
                 Color.black.opacity(0.18) // dark tint over the blur so icons/text stay readable
                     .allowsHitTesting(false)
@@ -40,7 +51,12 @@ struct LaunchpadView: View {
                                         isSelected: index == store.selectedIndex,
                                         onTap: { onSelect(app) },
                                         onRemove: { store.removeApp(app) },
-                                        onUninstall: { store.uninstallApp(app) }
+                                        onUninstall: { store.uninstallApp(app) },
+                                        isMultiSelected: store.selectedBundleIdentifiers.contains(app.bundleIdentifier),
+                                        selectionCount: store.selectedBundleIdentifiers.count,
+                                        onToggleSelect: { store.toggleSelection(app) },
+                                        onBulkRemove: { store.removeSelectedApps() },
+                                        onBulkUninstall: { store.uninstallSelectedApps() }
                                     )
                                 }
                             }
@@ -70,6 +86,8 @@ struct LaunchpadView: View {
                                 onSelect: onSelect,
                                 onRemoveApp: { app in store.removeApp(app) },
                                 onUninstallApp: { app in store.uninstallApp(app) },
+                                onRenameFolder: { folder, newName in store.renameFolder(folder, to: newName) },
+                                onEditingFolderNameChanged: { editing in store.isEditingFolderName = editing },
                                 onMergeIntoFolder: { source, target in
                                     let merged = LaunchpadStore.mergingIntoFolder(
                                         sourceIndex: source,
@@ -78,6 +96,16 @@ struct LaunchpadView: View {
                                     )
                                     store.pages[pageIndex] = merged
                                     store.save()
+                                },
+                                selectedBundleIdentifiers: store.selectedBundleIdentifiers,
+                                onToggleSelectApp: { app in store.toggleSelection(app) },
+                                onBulkRemove: { store.removeSelectedApps() },
+                                onBulkUninstall: { store.uninstallSelectedApps() },
+                                onBulkMergeIntoTarget: { target in store.mergeSelectedApps(intoTarget: target) },
+                                onRequestPageChange: { offset in
+                                    let target = store.currentPage + offset
+                                    guard store.pages.indices.contains(target) else { return }
+                                    store.currentPage = target
                                 }
                             )
                             .simultaneousGesture(
@@ -99,6 +127,29 @@ struct LaunchpadView: View {
                                         .fill(index == store.currentPage ? Color.white : Color.white.opacity(0.4))
                                         .frame(width: 8, height: 8)
                                         .onTapGesture { store.currentPage = index }
+                                        // Dragging a dot onto another reorders the
+                                        // pages themselves, the same drag-to-reorder
+                                        // convention as icons within a page.
+                                        .onDrag { NSItemProvider(object: "PAGE:\(index)" as NSString) }
+                                        .onDrop(of: [.text], isTargeted: nil) { providers in
+                                            guard let provider = providers.first else { return false }
+                                            provider.loadObject(ofClass: NSString.self) { reading, _ in
+                                                guard let string = reading as? String, string.hasPrefix("PAGE:"),
+                                                      let sourceIndex = Int(string.dropFirst(5))
+                                                else { return }
+                                                DispatchQueue.main.async {
+                                                    guard sourceIndex != index,
+                                                          store.pages.indices.contains(sourceIndex),
+                                                          store.pages.indices.contains(index)
+                                                    else { return }
+                                                    let destination = index > sourceIndex ? index + 1 : index
+                                                    store.pages.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destination)
+                                                    store.currentPage = index
+                                                    store.save()
+                                                }
+                                            }
+                                            return true
+                                        }
                                 }
                             }
                         }

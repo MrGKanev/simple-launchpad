@@ -79,9 +79,27 @@ final class OverlayWindowController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // Kept short and eased so opening/closing reads as an instant response
+    // to the hotkey/click rather than a deliberate "animation" — real
+    // Launchpad's own feel.
+    private static let showHideDuration: TimeInterval = 0.15
+
     func show() {
-        window?.makeKeyAndOrderFront(nil)
+        guard let window else { return }
+
+        window.contentView?.wantsLayer = true
+        window.alphaValue = 0
+        window.contentView?.layer?.transform = CATransform3DMakeScale(0.97, 0.97, 1)
+
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(Self.showHideDuration)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        window.animator().alphaValue = 1
+        window.contentView?.layer?.transform = CATransform3DIdentity
+        CATransaction.commit()
 
         // Installed/removed alongside window visibility (like the Esc
         // handling below) so paging works anywhere over the overlay, not
@@ -99,6 +117,13 @@ final class OverlayWindowController: NSWindowController {
                     self.hide()
                 }
                 return nil
+            }
+
+            // While renaming a folder, Return/arrows must behave like normal
+            // text editing (commit the field, move the cursor) instead of
+            // driving icon selection/launch.
+            if self.store.isEditingFolderName {
+                return event
             }
 
             switch event.keyCode {
@@ -131,7 +156,6 @@ final class OverlayWindowController: NSWindowController {
     }
 
     func hide() {
-        window?.orderOut(nil)
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil
@@ -140,6 +164,17 @@ final class OverlayWindowController: NSWindowController {
             NSEvent.removeMonitor(scrollMonitor)
             self.scrollMonitor = nil
         }
+
+        guard let window, window.isVisible else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(Self.showHideDuration)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeIn))
+        CATransaction.setCompletionBlock { [weak window] in
+            window?.orderOut(nil)
+        }
+        window.animator().alphaValue = 0
+        window.contentView?.layer?.transform = CATransform3DMakeScale(0.97, 0.97, 1)
+        CATransaction.commit()
     }
 
     func toggle() {
@@ -151,6 +186,10 @@ final class OverlayWindowController: NSWindowController {
     // events) only flips a single page instead of racing through several.
     private func handleScroll(_ delta: CGFloat) {
         guard store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        // A folder has its own internal ScrollView — while one's open,
+        // scrolling over it (or its backdrop) must stay scoped to the
+        // folder, not also page the grid behind it.
+        guard store.openFolder == nil else { return }
         guard abs(delta) > 1 else { return }
         guard Date().timeIntervalSince(lastPageChange) > 0.35 else { return }
         // Same convention as the swipe gesture: scrolling/swiping left advances.

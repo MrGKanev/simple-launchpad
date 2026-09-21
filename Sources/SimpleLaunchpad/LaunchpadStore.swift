@@ -33,6 +33,14 @@ final class LaunchpadStore: ObservableObject {
     // keyboard-selected folder can open it from `OverlayWindowController`,
     // outside the SwiftUI view tree.
     @Published var openFolder: FolderInfo?
+    // Set while a folder's name is being edited in place, so
+    // `OverlayWindowController` knows to let Return/arrow keys behave like
+    // normal text editing instead of driving icon selection/launch.
+    @Published var isEditingFolderName: Bool = false
+    // Cmd/Shift-click toggles membership here for bulk "Remove"/"Move to
+    // Trash" — keyed by bundle identifier since an `AppInfo` itself isn't
+    // Hashable-friendly as a Set element across separate lookups.
+    @Published var selectedBundleIdentifiers: Set<String> = []
 
     private let itemsPerPage: Int
     private let persistenceURL: URL
@@ -47,6 +55,16 @@ final class LaunchpadStore: ObservableObject {
         pages = Self.merge(discoveredApps: discoveredApps, savedLayout: savedLayout, itemsPerPage: itemsPerPage)
         currentPage = 0
         searchQuery = ""
+    }
+
+    // Rebuilds the grid from scratch, alphabetically, exactly like a
+    // first-ever launch — discards custom folders/ordering. Used by
+    // Settings' "Reset Layout" (which confirms before calling this, since
+    // it's a one-way trip for any manual organizing).
+    func resetLayout(discoveredApps: [AppInfo] = AppDiscoveryService.scan()) {
+        pages = Self.merge(discoveredApps: discoveredApps, savedLayout: nil, itemsPerPage: itemsPerPage)
+        currentPage = 0
+        save()
     }
 
     func save() {
@@ -119,6 +137,131 @@ final class LaunchpadStore: ObservableObject {
     func uninstallApp(_ app: AppInfo) {
         guard AppUninstaller.moveToTrash(app) else { return }
         removeApp(app)
+    }
+
+    func toggleSelection(_ app: AppInfo) {
+        if selectedBundleIdentifiers.contains(app.bundleIdentifier) {
+            selectedBundleIdentifiers.remove(app.bundleIdentifier)
+        } else {
+            selectedBundleIdentifiers.insert(app.bundleIdentifier)
+        }
+    }
+
+    func clearSelection() {
+        selectedBundleIdentifiers.removeAll()
+    }
+
+    private var selectedApps: [AppInfo] {
+        let allApps = pages.flatMap { $0 }.flatMap { item -> [AppInfo] in
+            switch item {
+            case .app(let app): return [app]
+            case .folder(let folder): return folder.apps
+            }
+        }
+        return allApps.filter { selectedBundleIdentifiers.contains($0.bundleIdentifier) }
+    }
+
+    func removeSelectedApps() {
+        for app in selectedApps { removeApp(app) }
+        clearSelection()
+    }
+
+    func uninstallSelectedApps() {
+        let apps = selectedApps
+        guard !apps.isEmpty, AppUninstaller.moveToTrash(apps) else { return }
+        for app in apps { removeApp(app) }
+        clearSelection()
+    }
+
+    // Merges every multi-selected app (except the target itself) into the
+    // drop target — an existing folder, or a freshly created one if the
+    // target was a loose app — wherever each of them currently lives,
+    // possibly spread across several pages/folders. Runs as one pass over a
+    // working copy of `pages` (collect + strip, then re-locate the target
+    // and insert) instead of removing one at a time, so an earlier removal
+    // pruning an empty page never invalidates an index computed earlier.
+    func mergeSelectedApps(intoTarget targetItem: LaunchpadItem) {
+        let targetAnchorID: String
+        let excludeIDs: Set<String>
+        switch targetItem {
+        case .app(let app):
+            targetAnchorID = app.bundleIdentifier
+            excludeIDs = [app.bundleIdentifier]
+        case .folder(let folder):
+            targetAnchorID = folder.id
+            excludeIDs = Set(folder.apps.map(\.bundleIdentifier))
+        }
+
+        let idsToMove = selectedBundleIdentifiers.subtracting(excludeIDs)
+        guard !idsToMove.isEmpty else { return }
+
+        var workingPages = pages
+        var collectedApps: [AppInfo] = []
+
+        for pageIndex in workingPages.indices {
+            workingPages[pageIndex] = workingPages[pageIndex].compactMap { item -> LaunchpadItem? in
+                switch item {
+                case .app(let app):
+                    guard idsToMove.contains(app.bundleIdentifier) else { return item }
+                    collectedApps.append(app)
+                    return nil
+                case .folder(var folder):
+                    let matching = folder.apps.filter { idsToMove.contains($0.bundleIdentifier) }
+                    guard !matching.isEmpty else { return item }
+                    collectedApps.append(contentsOf: matching)
+                    folder.apps.removeAll { idsToMove.contains($0.bundleIdentifier) }
+                    return folder.apps.isEmpty ? nil : .folder(folder)
+                }
+            }
+        }
+        workingPages.removeAll { $0.isEmpty }
+
+        search: for pageIndex in workingPages.indices {
+            for itemIndex in workingPages[pageIndex].indices {
+                switch workingPages[pageIndex][itemIndex] {
+                case .app(let app) where app.bundleIdentifier == targetAnchorID:
+                    let merged = FolderInfo(name: "Folder", apps: [app] + collectedApps)
+                    workingPages[pageIndex][itemIndex] = .folder(merged)
+                    break search
+                case .folder(let folder) where folder.id == targetAnchorID:
+                    var merged = folder
+                    merged.apps.append(contentsOf: collectedApps)
+                    workingPages[pageIndex][itemIndex] = .folder(merged)
+                    break search
+                default:
+                    continue
+                }
+            }
+        }
+
+        pages = workingPages
+        if !pages.indices.contains(currentPage) {
+            currentPage = max(0, pages.count - 1)
+        }
+        openFolder = nil // whatever was open may have just been mutated out from under it
+        clearSelection()
+        save()
+    }
+
+    // Renames a folder in place (matched by its pre-rename `id`, since that
+    // id is derived from its name+contents) and keeps the open folder sheet
+    // — a separate snapshot — in sync if it's the one being renamed.
+    func renameFolder(_ folder: FolderInfo, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != folder.name else { return }
+
+        for pageIndex in pages.indices {
+            for itemIndex in pages[pageIndex].indices {
+                guard case .folder(var existing) = pages[pageIndex][itemIndex], existing.id == folder.id else { continue }
+                existing.name = trimmed
+                pages[pageIndex][itemIndex] = .folder(existing)
+                if openFolder?.id == folder.id {
+                    openFolder = existing
+                }
+                save()
+                return
+            }
+        }
     }
 
     // Matches stock macOS Launchpad grouping its built-in utility apps

@@ -9,7 +9,7 @@ jobs:
   build-and-release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build app bundle
         run: sh Scripts/build-app-bundle.sh
       - name: Zip app bundle
@@ -17,7 +17,7 @@ jobs:
           cd .build/release
           zip -r -y "Simple Launchpad.app.zip" "Simple Launchpad.app"
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: .build/release/Simple Launchpad.app.zip
           generate_release_notes: true
