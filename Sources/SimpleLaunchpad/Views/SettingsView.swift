@@ -28,6 +28,15 @@ struct SettingsView: View {
         nonmutating set { updateStatusState.wrappedValue = newValue }
     }
 
+    // The synthesized memberwise init would be `private` because of the
+    // `private` state properties above, so it's spelled out explicitly here
+    // to stay accessible from other files (the state properties keep their
+    // own defaults from the property declarations above).
+    init(store: LaunchpadStore, preferences: AppPreferences) {
+        self.store = store
+        self.preferences = preferences
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Settings")

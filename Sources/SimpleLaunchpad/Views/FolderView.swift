@@ -43,6 +43,38 @@ struct FolderView: View {
         nonmutating set { editedNameState.wrappedValue = newValue }
     }
 
+    // The synthesized memberwise init would be `private` because of the
+    // `private` state properties above, so it's spelled out explicitly here
+    // to stay accessible from other files (the state properties keep their
+    // own defaults from the property declarations above).
+    init(
+        folder: FolderInfo,
+        metrics: IconGridMetrics = .fixed,
+        onSelect: @escaping (AppInfo) -> Void,
+        onRemove: @escaping (AppInfo) -> Void,
+        onUninstall: ((AppInfo) -> Void)? = nil,
+        onRename: @escaping (String) -> Void,
+        onEditingNameChanged: ((Bool) -> Void)? = nil,
+        selectedBundleIdentifiers: Set<String> = [],
+        onToggleSelectApp: ((AppInfo) -> Void)? = nil,
+        onBulkRemove: (() -> Void)? = nil,
+        onBulkUninstall: (() -> Void)? = nil,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.folder = folder
+        self.metrics = metrics
+        self.onSelect = onSelect
+        self.onRemove = onRemove
+        self.onUninstall = onUninstall
+        self.onRename = onRename
+        self.onEditingNameChanged = onEditingNameChanged
+        self.selectedBundleIdentifiers = selectedBundleIdentifiers
+        self.onToggleSelectApp = onToggleSelectApp
+        self.onBulkRemove = onBulkRemove
+        self.onBulkUninstall = onBulkUninstall
+        self.onDismiss = onDismiss
+    }
+
     private let columnCount = 5
     private let maxVisibleRows = 4
 

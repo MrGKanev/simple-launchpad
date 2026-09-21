@@ -34,6 +34,36 @@ struct AppIconView: View {
         nonmutating set { isLaunchingState.wrappedValue = newValue }
     }
 
+    // The synthesized memberwise init would be `private` because of the
+    // `private` state properties above, so it's spelled out explicitly here
+    // to stay accessible from other files (`isLaunchingState` keeps its own
+    // default from the property declaration above).
+    init(
+        app: AppInfo,
+        metrics: IconGridMetrics = .fixed,
+        isSelected: Bool = false,
+        onTap: @escaping () -> Void,
+        onRemove: (() -> Void)? = nil,
+        onUninstall: (() -> Void)? = nil,
+        isMultiSelected: Bool = false,
+        selectionCount: Int = 0,
+        onToggleSelect: (() -> Void)? = nil,
+        onBulkRemove: (() -> Void)? = nil,
+        onBulkUninstall: (() -> Void)? = nil
+    ) {
+        self.app = app
+        self.metrics = metrics
+        self.isSelected = isSelected
+        self.onTap = onTap
+        self.onRemove = onRemove
+        self.onUninstall = onUninstall
+        self.isMultiSelected = isMultiSelected
+        self.selectionCount = selectionCount
+        self.onToggleSelect = onToggleSelect
+        self.onBulkRemove = onBulkRemove
+        self.onBulkUninstall = onBulkUninstall
+    }
+
     var body: some View {
         VStack(spacing: 8 * metrics.scale) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
