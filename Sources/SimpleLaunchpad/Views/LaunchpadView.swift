@@ -51,35 +51,44 @@ struct LaunchpadView: View {
                         .padding(40)
                     }
                 } else {
-                    TabView(selection: currentPageState.projectedValue) {
-                        ForEach(Array(store.pages.enumerated()), id: \.offset) { pageIndex, _ in
-                            PageView(
-                                items: Binding(
-                                    get: { store.pages[pageIndex] },
-                                    set: { newValue in
-                                        store.pages[pageIndex] = newValue
-                                        store.save()
-                                    }
-                                ),
-                                onSelect: onSelect,
-                                onMergeIntoFolder: { source, target in
-                                    let merged = LaunchpadStore.mergingIntoFolder(
-                                        sourceIndex: source,
-                                        targetIndex: target,
-                                        items: store.pages[pageIndex]
-                                    )
-                                    store.pages[pageIndex] = merged
-                                    store.save()
-                                }
-                            )
-                            .tag(pageIndex)
-                        }
-                    }
                     // ponytail: `.tabViewStyle(.page)` (PageTabViewStyle) is marked
                     // `@available(macOS, unavailable)` in SwiftUI — it only exists on
-                    // iOS/tvOS/watchOS/visionOS. macOS has no swipeable page TabView
-                    // style, so we keep the default style and rely on the custom dot
-                    // indicator below plus drag/click page changes via `currentPage`.
+                    // iOS/tvOS/watchOS/visionOS, and macOS's default TabView style has
+                    // no swipe gesture. So instead of a TabView we render the current
+                    // page directly and drive `currentPage` ourselves via tappable dots
+                    // and a DragGesture below.
+                    if store.pages.indices.contains(currentPage) {
+                        let pageIndex = currentPage
+                        PageView(
+                            items: Binding(
+                                get: { store.pages[pageIndex] },
+                                set: { newValue in
+                                    store.pages[pageIndex] = newValue
+                                    store.save()
+                                }
+                            ),
+                            onSelect: onSelect,
+                            onMergeIntoFolder: { source, target in
+                                let merged = LaunchpadStore.mergingIntoFolder(
+                                    sourceIndex: source,
+                                    targetIndex: target,
+                                    items: store.pages[pageIndex]
+                                )
+                                store.pages[pageIndex] = merged
+                                store.save()
+                            }
+                        )
+                        .gesture(
+                            DragGesture(minimumDistance: 40)
+                                .onEnded { value in
+                                    if value.translation.width < 0, store.pages.indices.contains(currentPage + 1) {
+                                        currentPage += 1
+                                    } else if value.translation.width > 0, store.pages.indices.contains(currentPage - 1) {
+                                        currentPage -= 1
+                                    }
+                                }
+                        )
+                    }
 
                     if store.pages.count > 1 {
                         HStack(spacing: 8) {
@@ -87,6 +96,7 @@ struct LaunchpadView: View {
                                 Circle()
                                     .fill(index == currentPage ? Color.white : Color.white.opacity(0.4))
                                     .frame(width: 8, height: 8)
+                                    .onTapGesture { currentPage = index }
                             }
                         }
                     }
