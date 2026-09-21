@@ -75,7 +75,9 @@ xattr -dr com.apple.quarantine ".build/release/Simple Launchpad.app"
 ## Releases & auto-update
 
 Pushing a tag (e.g. `git tag 1.1 && git push origin 1.1`) triggers
-`.github/workflows/release.yml`, which builds the app, zips it, and attaches
-it to a new GitHub Release. The in-app "Check for Updates" button reads that
-release, and if it's newer than the running version, downloads it, strips
-the quarantine flag (the app isn't notarized), and swaps itself in place.
+`.github/workflows/release.yml`, which builds the app and attaches two
+assets to a new GitHub Release: a `.dmg` (a drag-to-`/Applications` installer,
+for a first install) and a `.zip` (what the in-app updater fetches). The
+in-app "Check for Updates" button reads the release, and if it's newer than
+the running version, downloads the `.zip`, strips the quarantine flag (the
+app isn't notarized), and swaps itself in place.

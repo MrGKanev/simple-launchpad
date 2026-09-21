@@ -18,8 +18,12 @@ jobs:
         run: |
           cd .build/release
           zip -r -y "Simple Launchpad.app.zip" "Simple Launchpad.app"
+      - name: Build DMG
+        run: sh Scripts/build-dmg.sh
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: .build/release/Simple Launchpad.app.zip
+          files: |
+            .build/release/Simple Launchpad.app.zip
+            .build/release/Simple Launchpad.dmg
           generate_release_notes: true
