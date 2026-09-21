@@ -177,6 +177,9 @@ final class OverlayWindowController: NSWindowController {
         }
 
         guard let window, window.isVisible else { return }
+        // Clear the search so reopening the overlay later starts fresh
+        // instead of showing whatever was last typed.
+        store.searchQuery = ""
         CATransaction.begin()
         CATransaction.setAnimationDuration(Self.showHideDuration)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeIn))

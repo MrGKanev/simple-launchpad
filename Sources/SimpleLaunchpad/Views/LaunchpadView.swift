@@ -62,6 +62,16 @@ struct LaunchpadView: View {
                             }
                             .padding(40 * metrics.scale)
                         }
+                        // A bare `ScrollView` has no intrinsic height of its own,
+                        // so it expands to fill all available space in this
+                        // VStack — taller than the fixed 5-row grid below ever
+                        // is. Since the VStack is centered in the full-screen
+                        // frame, that extra height pushed everything (including
+                        // the search field) upward the instant a search started.
+                        // Pinning it to the same height as the normal 5-row page
+                        // keeps the layout stable when switching in and out of
+                        // search.
+                        .frame(height: 5 * metrics.cellHeight + 4 * metrics.spacing)
                     } else {
                         // ponytail: `.tabViewStyle(.page)` (PageTabViewStyle) is marked
                         // `@available(macOS, unavailable)` in SwiftUI — it only exists on
