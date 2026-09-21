@@ -17,8 +17,22 @@ final class LaunchpadStore: ObservableObject {
     // Owned here (rather than as view-local state) so `OverlayWindowController`
     // can also drive page navigation directly from its window-level scroll and
     // arrow-key monitors, alongside the SwiftUI views.
-    @Published var currentPage: Int = 0
-    @Published var searchQuery: String = ""
+    @Published var currentPage: Int = 0 {
+        didSet { selectedIndex = 0 }
+    }
+    @Published var searchQuery: String = "" {
+        didSet { selectedIndex = 0 }
+    }
+
+    // Index of the keyboard-highlighted icon within whatever's currently
+    // visible (the current page's items, or `searchResults` while
+    // searching) — driven by `OverlayWindowController`'s arrow-key monitor.
+    @Published var selectedIndex: Int = 0
+    // Which folder popup is open, if any. Lives here (rather than as
+    // view-local state in `PageView`) so pressing Return on a
+    // keyboard-selected folder can open it from `OverlayWindowController`,
+    // outside the SwiftUI view tree.
+    @Published var openFolder: FolderInfo?
 
     private let itemsPerPage: Int
     private let persistenceURL: URL
@@ -37,6 +51,74 @@ final class LaunchpadStore: ObservableObject {
 
     func save() {
         try? LayoutPersistence.save(Self.encode(pages: pages), to: persistenceURL)
+    }
+
+    // The flat, filtered list search switches the grid to — ignores pages
+    // and folders entirely, matching stock Launchpad's search behavior.
+    // Shared by `LaunchpadView` (to render it) and `OverlayWindowController`
+    // (to know what Return should launch while searching).
+    var searchResults: [AppInfo] {
+        let allApps = pages.flatMap { $0 }.compactMap { item -> AppInfo? in
+            if case .app(let app) = item { return app }
+            return nil
+        }
+        return AppSearch.filter(allApps, query: searchQuery)
+    }
+
+    // Removes an app wherever it is — loose on a page or tucked inside a
+    // folder — and keeps everything downstream consistent: an emptied
+    // folder is dropped, an emptied *page* is dropped too (and `currentPage`
+    // adjusted so paging never lands on a blank grid), and the open folder
+    // sheet (a separate snapshot, not a live view into `pages`) is kept in
+    // sync if the removed app was inside it.
+    func removeApp(_ app: AppInfo) {
+        for pageIndex in pages.indices {
+            for itemIndex in pages[pageIndex].indices {
+                switch pages[pageIndex][itemIndex] {
+                case .app(let existing) where existing.bundleIdentifier == app.bundleIdentifier:
+                    pages[pageIndex].remove(at: itemIndex)
+                    finishRemoval(pageIndex: pageIndex)
+                    return
+                case .folder(var folder):
+                    guard let appIndex = folder.apps.firstIndex(where: { $0.bundleIdentifier == app.bundleIdentifier }) else {
+                        continue
+                    }
+                    let wasOpenFolder = openFolder?.id == folder.id
+                    folder.apps.remove(at: appIndex)
+                    if folder.apps.isEmpty {
+                        pages[pageIndex].remove(at: itemIndex)
+                        if wasOpenFolder { openFolder = nil }
+                    } else {
+                        pages[pageIndex][itemIndex] = .folder(folder)
+                        if wasOpenFolder { openFolder = folder }
+                    }
+                    finishRemoval(pageIndex: pageIndex)
+                    return
+                default:
+                    continue
+                }
+            }
+        }
+    }
+
+    private func finishRemoval(pageIndex: Int) {
+        if pages[pageIndex].isEmpty {
+            pages.remove(at: pageIndex)
+            if currentPage > pageIndex {
+                currentPage -= 1
+            } else if !pages.indices.contains(currentPage) {
+                currentPage = max(0, pages.count - 1)
+            }
+        }
+        save()
+    }
+
+    // Confirms, moves the app to the Trash, and — only once that actually
+    // succeeds — removes it from the grid too, so a cancelled or failed
+    // uninstall never leaves a dangling icon for an app that's still there.
+    func uninstallApp(_ app: AppInfo) {
+        guard AppUninstaller.moveToTrash(app) else { return }
+        removeApp(app)
     }
 
     // Matches stock macOS Launchpad grouping its built-in utility apps

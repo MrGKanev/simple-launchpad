@@ -19,12 +19,18 @@ final class OverlayWindow: NSWindow {
 
 final class OverlayWindowController: NSWindowController {
     private let store: LaunchpadStore
+    private let onLaunch: (AppInfo) -> Void
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
     private var lastPageChange = Date.distantPast
 
+    // Matches `IconGridMetrics`'s fixed 7-column layout (both `.fixed` and
+    // `.fitting`'s default) — used to translate Up/Down into ± a row.
+    private static let gridColumns = 7
+
     init(store: LaunchpadStore, onLaunch: @escaping (AppInfo) -> Void) {
         self.store = store
+        self.onLaunch = onLaunch
         let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let window = OverlayWindow(
             contentRect: screenFrame,
@@ -82,22 +88,38 @@ final class OverlayWindowController: NSWindowController {
         // just while hovering a particular SwiftUI subview.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
+            let isSearching = !self.store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
+
             if OverlayKeyHandling.shouldClose(forKeyCode: event.keyCode) {
-                self.hide()
+                // Esc backs out of an open folder first, same as clicking
+                // its background, before it closes the whole overlay.
+                if self.store.openFolder != nil {
+                    self.store.openFolder = nil
+                } else {
+                    self.hide()
+                }
                 return nil
             }
-            // Left/right arrows page the grid, but only while there's no
-            // active search — otherwise they should move the text cursor.
-            if self.store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-                if event.keyCode == 124 { // Right arrow
-                    self.changePage(by: 1)
-                    return nil
-                } else if event.keyCode == 123 { // Left arrow
-                    self.changePage(by: -1)
-                    return nil
-                }
+
+            switch event.keyCode {
+            case 36, 76: // Return / numpad Enter — launch or open the selection
+                self.activateSelectedItem(isSearching: isSearching)
+                return nil
+            case 125: // Down arrow
+                self.moveSelection(dx: 0, dy: 1, isSearching: isSearching)
+                return nil
+            case 126: // Up arrow
+                self.moveSelection(dx: 0, dy: -1, isSearching: isSearching)
+                return nil
+            case 124 where !isSearching: // Right arrow — text cursor while searching
+                self.moveSelection(dx: 1, dy: 0, isSearching: isSearching)
+                return nil
+            case 123 where !isSearching: // Left arrow — text cursor while searching
+                self.moveSelection(dx: -1, dy: 0, isSearching: isSearching)
+                return nil
+            default:
+                return event
             }
-            return event
         }
 
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
@@ -144,5 +166,38 @@ final class OverlayWindowController: NSWindowController {
         guard store.pages.indices.contains(target) else { return }
         store.currentPage = target
         lastPageChange = Date()
+    }
+
+    private func visibleItemCount(isSearching: Bool) -> Int {
+        if isSearching {
+            return store.searchResults.count
+        }
+        guard store.pages.indices.contains(store.currentPage) else { return 0 }
+        return store.pages[store.currentPage].count
+    }
+
+    private func moveSelection(dx: Int, dy: Int, isSearching: Bool) {
+        let count = visibleItemCount(isSearching: isSearching)
+        guard count > 0 else { return }
+        let proposed = store.selectedIndex + dx + dy * Self.gridColumns
+        store.selectedIndex = max(0, min(count - 1, proposed))
+    }
+
+    private func activateSelectedItem(isSearching: Bool) {
+        if isSearching {
+            let results = store.searchResults
+            guard results.indices.contains(store.selectedIndex) else { return }
+            onLaunch(results[store.selectedIndex])
+            return
+        }
+        guard store.pages.indices.contains(store.currentPage) else { return }
+        let items = store.pages[store.currentPage]
+        guard items.indices.contains(store.selectedIndex) else { return }
+        switch items[store.selectedIndex] {
+        case .app(let app):
+            onLaunch(app)
+        case .folder(let folder):
+            store.openFolder = folder
+        }
     }
 }

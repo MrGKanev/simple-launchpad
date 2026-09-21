@@ -4,7 +4,13 @@ import AppKit
 struct AppIconView: View {
     let app: AppInfo
     var metrics: IconGridMetrics = .fixed
+    var isSelected: Bool = false
     let onTap: () -> Void
+    // nil hides the "Remove from Launchpad" context menu entirely.
+    var onRemove: (() -> Void)? = nil
+    // nil hides "Move to Trash…" — this one actually deletes the app
+    // (after confirming), so unlike `onRemove` it's marked destructive.
+    var onUninstall: (() -> Void)? = nil
 
     // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
     // attribute — see the comment in LaunchpadView.swift for why (this SDK's
@@ -26,6 +32,10 @@ struct AppIconView: View {
                 .lineLimit(1)
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
+        )
         .contentShape(Rectangle())
         .scaleEffect(isBouncing ? 0.85 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isBouncing)
@@ -36,6 +46,14 @@ struct AppIconView: View {
             isBouncing = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { isBouncing = false }
             onTap()
+        }
+        .contextMenu {
+            if let onRemove {
+                Button("Remove from Launchpad", action: onRemove)
+            }
+            if let onUninstall {
+                Button("Move to Trash…", role: .destructive, action: onUninstall)
+            }
         }
     }
 }

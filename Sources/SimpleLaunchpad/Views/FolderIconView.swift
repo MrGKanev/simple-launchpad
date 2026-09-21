@@ -4,6 +4,7 @@ import AppKit
 struct FolderIconView: View {
     let folder: FolderInfo
     var metrics: IconGridMetrics = .fixed
+    var isSelected: Bool = false
     let onTap: () -> Void
 
     // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
@@ -36,6 +37,10 @@ struct FolderIconView: View {
                 .lineLimit(1)
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
+        )
         .contentShape(Rectangle())
         .scaleEffect(isBouncing ? 0.85 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isBouncing)

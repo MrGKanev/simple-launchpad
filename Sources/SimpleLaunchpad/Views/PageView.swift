@@ -4,17 +4,19 @@ import UniformTypeIdentifiers
 struct PageView: View {
     @Binding var items: [LaunchpadItem]
     let metrics: IconGridMetrics
+    let selectedIndex: Int
+    // Lives in `LaunchpadStore` (not view-local state here) so a
+    // keyboard-selected folder can also be opened from
+    // `OverlayWindowController`'s Return-key handling, outside SwiftUI.
+    @Binding var openFolder: FolderInfo?
     let onSelect: (AppInfo) -> Void
+    // Routed all the way to `LaunchpadStore` (rather than mutating `items`
+    // locally) so removal/uninstall can prune an emptied page and keep the
+    // open folder sheet in sync in one place — see
+    // `LaunchpadStore.removeApp`/`uninstallApp`.
+    let onRemoveApp: (AppInfo) -> Void
+    let onUninstallApp: (AppInfo) -> Void
     let onMergeIntoFolder: (Int, Int) -> Void
-
-    // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
-    // attribute — see the comment in LaunchpadView.swift for why (this SDK's
-    // `@State` macro plugin isn't available under Xcode Command Line Tools).
-    private var selectedFolderState = SwiftUI.State<FolderInfo?>(wrappedValue: nil)
-    private var selectedFolder: FolderInfo? {
-        get { selectedFolderState.wrappedValue }
-        nonmutating set { selectedFolderState.wrappedValue = newValue }
-    }
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.fixed(metrics.cellWidth), spacing: metrics.spacing), count: metrics.columns)
@@ -33,8 +35,8 @@ struct PageView: View {
             }
         }
         .padding(40)
-        .sheet(item: selectedFolderState.projectedValue) { folder in
-            FolderView(folder: folder, onSelect: onSelect)
+        .sheet(item: $openFolder) { folder in
+            FolderView(folder: folder, metrics: metrics, onSelect: onSelect, onRemove: onRemoveApp, onUninstall: onUninstallApp)
         }
     }
 
@@ -42,9 +44,21 @@ struct PageView: View {
     private func itemView(for item: LaunchpadItem, at index: Int) -> some View {
         switch item {
         case .app(let app):
-            AppIconView(app: app, metrics: metrics, onTap: { onSelect(app) })
+            AppIconView(
+                app: app,
+                metrics: metrics,
+                isSelected: index == selectedIndex,
+                onTap: { onSelect(app) },
+                onRemove: { onRemoveApp(app) },
+                onUninstall: { onUninstallApp(app) }
+            )
         case .folder(let folder):
-            FolderIconView(folder: folder, metrics: metrics, onTap: { selectedFolder = folder })
+            FolderIconView(
+                folder: folder,
+                metrics: metrics,
+                isSelected: index == selectedIndex,
+                onTap: { openFolder = folder }
+            )
         }
     }
 }

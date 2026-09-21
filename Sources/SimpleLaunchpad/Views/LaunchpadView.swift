@@ -5,14 +5,6 @@ struct LaunchpadView: View {
     let onSelect: (AppInfo) -> Void
     let onDismiss: () -> Void
 
-    private var searchResults: [AppInfo] {
-        let allApps = store.pages.flatMap { $0 }.compactMap { item -> AppInfo? in
-            if case .app(let app) = item { return app }
-            return nil
-        }
-        return AppSearch.filter(allApps, query: store.searchQuery)
-    }
-
     var body: some View {
         GeometryReader { geometry in
             let metrics = IconGridMetrics.fitting(geometry.size)
@@ -29,8 +21,11 @@ struct LaunchpadView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 24) {
+                    // Same 2.8:0.32 width:height ratio the field always had,
+                    // now scaled off the grid's own screen-relative metrics
+                    // instead of a fixed pixel size.
                     SearchField(query: $store.searchQuery)
-                        .frame(width: 280, height: 32)
+                        .frame(width: metrics.cellWidth * 2.8, height: metrics.cellHeight * 0.32)
 
                     if !store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
                         ScrollView {
@@ -38,8 +33,15 @@ struct LaunchpadView: View {
                                 columns: Array(repeating: GridItem(.fixed(metrics.cellWidth), spacing: metrics.spacing), count: metrics.columns),
                                 spacing: metrics.spacing
                             ) {
-                                ForEach(searchResults, id: \.bundleIdentifier) { app in
-                                    AppIconView(app: app, metrics: metrics, onTap: { onSelect(app) })
+                                ForEach(Array(store.searchResults.enumerated()), id: \.element.bundleIdentifier) { index, app in
+                                    AppIconView(
+                                        app: app,
+                                        metrics: metrics,
+                                        isSelected: index == store.selectedIndex,
+                                        onTap: { onSelect(app) },
+                                        onRemove: { store.removeApp(app) },
+                                        onUninstall: { store.uninstallApp(app) }
+                                    )
                                 }
                             }
                             .padding(40)
@@ -63,7 +65,11 @@ struct LaunchpadView: View {
                                     }
                                 ),
                                 metrics: metrics,
+                                selectedIndex: store.selectedIndex,
+                                openFolder: $store.openFolder,
                                 onSelect: onSelect,
+                                onRemoveApp: { app in store.removeApp(app) },
+                                onUninstallApp: { app in store.uninstallApp(app) },
                                 onMergeIntoFolder: { source, target in
                                     let merged = LaunchpadStore.mergingIntoFolder(
                                         sourceIndex: source,
@@ -98,11 +104,7 @@ struct LaunchpadView: View {
                         }
                     }
                 }
-                .padding(.top, 60)
-                // Anchored to the top (not centered) so the search field stays put and
-                // only the content below it grows/shrinks as results change — centering
-                // here made the whole block visibly jump while typing a search query.
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
         .onAppear { store.load() }

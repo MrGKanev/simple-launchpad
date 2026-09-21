@@ -2,25 +2,36 @@ import SwiftUI
 
 struct FolderView: View {
     let folder: FolderInfo
+    // Reuses the *same* screen-size-relative metrics the main grid computes
+    // (`IconGridMetrics.fitting`) instead of hardcoded pixel constants, so
+    // the popup scales the same way the grid behind it does on any screen
+    // size — `.fixed` only as a fallback for previews/tests.
+    var metrics: IconGridMetrics = .fixed
     let onSelect: (AppInfo) -> Void
+    let onRemove: (AppInfo) -> Void
+    var onUninstall: ((AppInfo) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     private let columnCount = 5
-    private let cellWidth: CGFloat = 120
-    private let cellHeight: CGFloat = 130
-    private let spacing: CGFloat = 28
-    private let outerPadding: CGFloat = 40
-    private let titleHeight: CGFloat = 29 // .title2 line height
-    private let titleSpacing: CGFloat = 20
     private let maxVisibleRows = 4
 
-    private let columns = Array(repeating: GridItem(.fixed(120), spacing: 28), count: 5)
+    // Everything else below scales off this ratio, so the popup's padding
+    // and title sizing track the grid's scale factor even though
+    // `IconGridMetrics` doesn't expose the raw scale itself.
+    private var scale: CGFloat { metrics.cellWidth / IconGridMetrics.fixed.cellWidth }
+    private var outerPadding: CGFloat { 40 * scale }
+    private var titleHeight: CGFloat { 29 * scale } // .title2 line height
+    private var titleSpacing: CGFloat { 20 * scale }
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.fixed(metrics.cellWidth), spacing: metrics.spacing), count: columnCount)
+    }
 
     // The grid uses fixed-width columns, so the popup must be at least wide
-    // enough to fit them all — an idealWidth narrower than this clipped the
-    // leftmost and rightmost columns with no way to scroll to them.
+    // enough to fit them all — narrower than this clipped the leftmost and
+    // rightmost columns with no way to scroll to them.
     private var gridWidth: CGFloat {
-        CGFloat(columnCount) * cellWidth + CGFloat(columnCount - 1) * spacing
+        CGFloat(columnCount) * metrics.cellWidth + CGFloat(columnCount - 1) * metrics.spacing
     }
     private var popupWidth: CGFloat {
         gridWidth + outerPadding * 2
@@ -39,7 +50,7 @@ struct FolderView: View {
     // reliably catch it.
     private var scrollViewHeight: CGFloat {
         let visibleRows = CGFloat(min(rowCount, maxVisibleRows))
-        return visibleRows * cellHeight + max(0, visibleRows - 1) * spacing + 16 // + .padding(.vertical, 8)
+        return visibleRows * metrics.cellHeight + max(0, visibleRows - 1) * metrics.spacing + 16 * scale
     }
     private var popupHeight: CGFloat {
         outerPadding * 2 + titleHeight + titleSpacing + scrollViewHeight
@@ -61,15 +72,21 @@ struct FolderView: View {
                 // A folder like the auto-generated "Other" one can hold more apps
                 // than fit in `maxVisibleRows` — past that it scrolls.
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: spacing) {
+                    LazyVGrid(columns: columns, spacing: metrics.spacing) {
                         ForEach(folder.apps, id: \.bundleIdentifier) { app in
-                            AppIconView(app: app, onTap: {
-                                onSelect(app)
-                                dismiss()
-                            })
+                            AppIconView(
+                                app: app,
+                                metrics: metrics,
+                                onTap: {
+                                    onSelect(app)
+                                    dismiss()
+                                },
+                                onRemove: { onRemove(app) },
+                                onUninstall: onUninstall.map { callback in { callback(app) } }
+                            )
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 8 * scale)
                 }
                 .frame(height: scrollViewHeight)
             }
