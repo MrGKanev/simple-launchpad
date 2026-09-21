@@ -3,17 +3,23 @@ import AppKit
 
 struct AppIconView: View {
     let app: AppInfo
+    var metrics: IconGridMetrics = .fixed
+    let onTap: () -> Void
 
     var body: some View {
-        VStack(spacing: 6) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
-                .resizable()
-                .frame(width: 64, height: 64)
-            Text(app.name)
-                .font(.caption)
-                .foregroundColor(.white)
-                .lineLimit(1)
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
+                    .resizable()
+                    .frame(width: metrics.imageSize, height: metrics.imageSize)
+                Text(app.name)
+                    .font(metrics.font)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+            }
+            .frame(width: metrics.cellWidth, height: metrics.cellHeight)
+            .contentShape(Rectangle())
         }
-        .frame(width: 90, height: 100)
+        .buttonStyle(IconButtonStyle())
     }
 }

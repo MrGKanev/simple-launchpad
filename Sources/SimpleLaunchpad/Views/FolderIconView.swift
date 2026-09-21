@@ -3,26 +3,33 @@ import AppKit
 
 struct FolderIconView: View {
     let folder: FolderInfo
+    var metrics: IconGridMetrics = .fixed
+    let onTap: () -> Void
 
-    private let columns = [GridItem(.fixed(26)), GridItem(.fixed(26))]
+    private var miniIconSize: CGFloat { max(12, (metrics.imageSize - 16 - 3) / 2) }
+    private var columns: [GridItem] { [GridItem(.fixed(miniIconSize)), GridItem(.fixed(miniIconSize))] }
 
     var body: some View {
-        VStack(spacing: 6) {
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(Array(folder.apps.prefix(4)), id: \.bundleIdentifier) { app in
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
-                        .resizable()
-                        .frame(width: 24, height: 24)
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                LazyVGrid(columns: columns, spacing: 3) {
+                    ForEach(Array(folder.apps.prefix(4)), id: \.bundleIdentifier) { app in
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
+                            .resizable()
+                            .frame(width: miniIconSize, height: miniIconSize)
+                    }
                 }
+                .padding(8)
+                .frame(width: metrics.imageSize, height: metrics.imageSize)
+                .background(RoundedRectangle(cornerRadius: metrics.imageSize * 0.19).fill(Color.white.opacity(0.15)))
+                Text(folder.name)
+                    .font(metrics.font)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
             }
-            .padding(6)
-            .frame(width: 64, height: 64)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.15)))
-            Text(folder.name)
-                .font(.caption)
-                .foregroundColor(.white)
-                .lineLimit(1)
+            .frame(width: metrics.cellWidth, height: metrics.cellHeight)
+            .contentShape(Rectangle())
         }
-        .frame(width: 90, height: 100)
+        .buttonStyle(IconButtonStyle())
     }
 }

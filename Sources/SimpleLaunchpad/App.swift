@@ -31,5 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.overlayController.toggle()
         })
         hotKeyManager.register()
+
+        overlayController.show()
     }
 }

@@ -8,7 +8,7 @@ let package = Package(
         .executableTarget(
             name: "SimpleLaunchpad",
             path: "Sources/SimpleLaunchpad",
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist", "Resources/AppIcon.icns", "Resources/AppIcon.svg"]
         ),
         .testTarget(
             name: "SimpleLaunchpadTests",

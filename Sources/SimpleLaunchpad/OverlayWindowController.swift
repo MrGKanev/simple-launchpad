@@ -7,12 +7,22 @@ enum OverlayKeyHandling {
     }
 }
 
+// A borderless NSWindow returns `false` from `canBecomeKey`/`canBecomeMain`
+// by default, so it never becomes the key window and never gets keyboard
+// focus — the search field would silently ignore every keystroke. Overriding
+// both to `true` is the standard fix for a borderless overlay that still
+// needs to accept text input.
+final class OverlayWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 final class OverlayWindowController: NSWindowController {
     private var keyMonitor: Any?
 
     init(store: LaunchpadStore, onLaunch: @escaping (AppInfo) -> Void) {
         let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let window = NSWindow(
+        let window = OverlayWindow(
             contentRect: screenFrame,
             styleMask: [.borderless],
             backing: .buffered,
@@ -20,7 +30,11 @@ final class OverlayWindowController: NSWindowController {
         )
         window.level = .floating
         window.isOpaque = false
-        window.backgroundColor = NSColor.black.withAlphaComponent(0.4)
+        // Left fully clear rather than tinted: the SwiftUI content draws its
+        // own `NSVisualEffectView` blur (behindWindow-blended), which needs
+        // to see through the window to actually sample and blur what's on
+        // screen behind it.
+        window.backgroundColor = .clear
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         super.init(window: window)
 

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct PageView: View {
     @Binding var items: [LaunchpadItem]
+    let metrics: IconGridMetrics
     let onSelect: (AppInfo) -> Void
     let onMergeIntoFolder: (Int, Int) -> Void
 
@@ -15,10 +16,12 @@ struct PageView: View {
         nonmutating set { selectedFolderState.wrappedValue = newValue }
     }
 
-    private let columns = Array(repeating: GridItem(.fixed(90), spacing: 24), count: 7)
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.fixed(metrics.cellWidth), spacing: metrics.spacing), count: metrics.columns)
+    }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 24) {
+        LazyVGrid(columns: columns, spacing: metrics.spacing) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 itemView(for: item, at: index)
                     .onDrag { NSItemProvider(object: String(index) as NSString) }
@@ -39,11 +42,9 @@ struct PageView: View {
     private func itemView(for item: LaunchpadItem, at index: Int) -> some View {
         switch item {
         case .app(let app):
-            AppIconView(app: app)
-                .onTapGesture { onSelect(app) }
+            AppIconView(app: app, metrics: metrics, onTap: { onSelect(app) })
         case .folder(let folder):
-            FolderIconView(folder: folder)
-                .onTapGesture { selectedFolder = folder }
+            FolderIconView(folder: folder, metrics: metrics, onTap: { selectedFolder = folder })
         }
     }
 }
