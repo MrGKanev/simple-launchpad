@@ -87,6 +87,17 @@ final class OverlayWindowController: NSWindowController {
     func show() {
         guard let window else { return }
 
+        // Re-measure the screen on every show, not just at window creation —
+        // otherwise a resolution change (new external display, System
+        // Settings change, etc.) after launch would leave the overlay sized
+        // for whatever screen was main when the app started, instead of
+        // reacting to the current one the way `IconGridMetrics.fitting`
+        // (via the SwiftUI `GeometryReader` it's fed from) is designed to.
+        if let screenFrame = (NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main)?.frame,
+           screenFrame != window.frame {
+            window.setFrame(screenFrame, display: true)
+        }
+
         window.contentView?.wantsLayer = true
         window.alphaValue = 0
         window.contentView?.layer?.transform = CATransform3DMakeScale(0.97, 0.97, 1)

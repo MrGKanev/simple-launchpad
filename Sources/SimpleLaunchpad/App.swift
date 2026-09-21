@@ -25,7 +25,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         overlayController = OverlayWindowController(store: store, onLaunch: { [weak self] app in
             NSWorkspace.shared.open(app.path)
-            self?.overlayController.hide()
+            // A beat before the overlay itself starts fading, so the tapped
+            // icon's own "pop" (see `AppIconView`) has time to actually
+            // register before the whole screen starts leaving too — tap,
+            // *then* dismiss, instead of both starting at once and blurring
+            // together.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                self?.overlayController.hide()
+            }
         })
 
         settingsWindowController = SettingsWindowController(store: store, preferences: preferences)

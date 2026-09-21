@@ -11,11 +11,17 @@ struct IconGridMetrics {
     let cellHeight: CGFloat
     let imageSize: CGFloat
     let font: Font
+    // Relative to `.fixed`'s own metrics (scale == 1.0 there). Every other
+    // piece of chrome around the grid (dots, outer padding, popover title,
+    // corner radii, …) derives its own size from this one number instead of
+    // hardcoding pixels, so the whole overlay scales together — like a `rem`
+    // unit in web CSS scaling off the root font size.
+    let scale: CGFloat
 
     /// Fixed sizing for contexts that aren't the full-screen grid (e.g. the
     /// folder popover), which don't scale off the screen size.
     static let fixed = IconGridMetrics(
-        columns: 7, spacing: 28, cellWidth: 120, cellHeight: 130, imageSize: 84, font: .body
+        columns: 7, spacing: 28, cellWidth: 120, cellHeight: 130, imageSize: 84, font: .body, scale: 1.0
     )
 
     static func fitting(_ size: CGSize, columns: Int = 7, rows: Int = 5, targetFraction: CGFloat = 0.6) -> IconGridMetrics {
@@ -40,7 +46,8 @@ struct IconGridMetrics {
             cellWidth: baseCellWidth * scale,
             cellHeight: baseCellHeight * scale,
             imageSize: baseImageSize * scale,
-            font: .system(size: baseFontSize * scale)
+            font: .system(size: baseFontSize * scale),
+            scale: scale
         )
     }
 }

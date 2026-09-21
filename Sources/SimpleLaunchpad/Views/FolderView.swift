@@ -47,9 +47,8 @@ struct FolderView: View {
     private let maxVisibleRows = 4
 
     // Everything else below scales off this ratio, so the popup's padding
-    // and title sizing track the grid's scale factor even though
-    // `IconGridMetrics` doesn't expose the raw scale itself.
-    private var scale: CGFloat { metrics.cellWidth / IconGridMetrics.fixed.cellWidth }
+    // and title sizing track the grid's scale factor.
+    private var scale: CGFloat { metrics.scale }
     private var outerPadding: CGFloat { 40 * scale }
     private var titleHeight: CGFloat { 29 * scale } // .title2 line height
     private var titleSpacing: CGFloat { 20 * scale }
@@ -140,17 +139,20 @@ struct FolderView: View {
     // to rename it in place.
     @ViewBuilder
     private var title: some View {
+        // `.title2`'s own point size, scaled to match everything else in the
+        // popup instead of staying fixed while the rest of it resizes.
+        let titleFont = Font.system(size: 22 * scale)
         if isEditingName {
             TextField("Folder Name", text: Binding(get: { editedName }, set: { editedName = $0 }))
                 .textFieldStyle(.plain)
-                .font(.title2)
+                .font(titleFont)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .frame(width: popupWidth * 0.6)
                 .onSubmit { commitRename() }
         } else {
             Text(folder.name)
-                .font(.title2)
+                .font(titleFont)
                 .foregroundColor(.white)
                 .onTapGesture {
                     editedName = folder.name

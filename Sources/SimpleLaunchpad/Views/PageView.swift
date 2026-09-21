@@ -61,7 +61,7 @@ struct PageView: View {
                         ))
                 }
             }
-            .padding(40)
+            .padding(40 * metrics.scale)
             // `.overlay` (not a sibling `HStack` with a `Spacer`) so these
             // edge zones never influence the grid's own reported size — a
             // `Spacer` inside a plain ZStack sibling made the *whole page*
@@ -69,13 +69,13 @@ struct PageView: View {
             // the screen, blowing up the layout well beyond the grid itself.
             .overlay(alignment: .leading) {
                 Color.clear
-                    .frame(width: 24)
+                    .frame(width: 24 * metrics.scale)
                     .contentShape(Rectangle())
                     .onDrop(of: [.text], delegate: EdgePageFlipDelegate(onFlip: { onRequestPageChange(-1) }))
             }
             .overlay(alignment: .trailing) {
                 Color.clear
-                    .frame(width: 24)
+                    .frame(width: 24 * metrics.scale)
                     .contentShape(Rectangle())
                     .onDrop(of: [.text], delegate: EdgePageFlipDelegate(onFlip: { onRequestPageChange(1) }))
             }

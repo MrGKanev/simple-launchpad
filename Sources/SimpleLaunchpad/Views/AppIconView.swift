@@ -24,14 +24,18 @@ struct AppIconView: View {
     // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
     // attribute — see the comment in LaunchpadView.swift for why (this SDK's
     // `@State` macro plugin isn't available under Xcode Command Line Tools).
-    private var isBouncingState = SwiftUI.State(wrappedValue: false)
-    private var isBouncing: Bool {
-        get { isBouncingState.wrappedValue }
-        nonmutating set { isBouncingState.wrappedValue = newValue }
+    private var isLaunchingState = SwiftUI.State(wrappedValue: false)
+    // Grow-and-fade feedback for the icon that was actually tapped, so a
+    // click reads as "launching this app" rather than just the whole
+    // overlay abruptly vanishing (`OverlayWindowController.hide` fades the
+    // window itself at the same time, over the same duration).
+    private var isLaunching: Bool {
+        get { isLaunchingState.wrappedValue }
+        nonmutating set { isLaunchingState.wrappedValue = newValue }
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 8 * metrics.scale) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
                 .resizable()
                 .frame(width: metrics.imageSize, height: metrics.imageSize)
@@ -42,7 +46,7 @@ struct AppIconView: View {
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
         .background(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 14 * metrics.scale)
                 .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
         )
         .overlay(alignment: .topTrailing) {
@@ -55,8 +59,18 @@ struct AppIconView: View {
             }
         }
         .contentShape(Rectangle())
-        .scaleEffect(isBouncing ? 0.85 : 1.0)
-        .animation(.easeOut(duration: 0.12), value: isBouncing)
+        // Scale only — no separate opacity fade here. The tapped icon fading
+        // out *with its own animation curve*, racing the whole overlay
+        // window's *own* alpha fade (a completely separate Core Animation
+        // driven by `OverlayWindowController.hide`), was what made the
+        // dismiss look like two disjointed stages instead of one motion:
+        // the two fades rarely finished at the same instant. Leaving fading
+        // entirely to the window's single alpha animation means the icon
+        // disappears in exact lockstep with the background, since they're
+        // then just the same pixels — the icon only adds its own quick
+        // "pop" on top of that shared fade.
+        .scaleEffect(isLaunching ? 1.15 : 1.0)
+        .animation(.easeOut(duration: 0.12), value: isLaunching)
         // A plain tap gesture (rather than a `Button`) — `Button` claims the
         // mouse-down before `.onDrag` (applied by the caller) can recognize a
         // drag start, which silently broke dragging apps into folders.
@@ -67,9 +81,15 @@ struct AppIconView: View {
                 onToggleSelect()
                 return
             }
-            isBouncing = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { isBouncing = false }
+            isLaunching = true
             onTap()
+            // Reset only once the whole sequence — this pop, the beat before
+            // the window starts leaving, and the window's own fade-out (see
+            // `AppDelegate`'s `onLaunch` and
+            // `OverlayWindowController.showHideDuration`) — has finished, so
+            // the icon isn't left enlarged the next time the overlay reopens
+            // on the same item, and doesn't visibly snap back mid-fade.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { isLaunching = false }
         }
         .contextMenu {
             if isMultiSelected, selectionCount > 1 {

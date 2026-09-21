@@ -8,6 +8,10 @@ import AppKit
 // clear ("x") button for free.
 struct SearchField: NSViewRepresentable {
     @Binding var query: String
+    // Scales with `IconGridMetrics.scale` (see LaunchpadView) so the field's
+    // text tracks the rest of the overlay's screen-relative sizing instead
+    // of staying a fixed point size on every display.
+    var fontSize: CGFloat = 20
 
     func makeCoordinator() -> Coordinator {
         Coordinator(query: $query)
@@ -16,7 +20,7 @@ struct SearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.placeholderString = "Search"
-        field.font = .systemFont(ofSize: 20)
+        field.font = .systemFont(ofSize: fontSize)
         field.focusRingType = .none
         field.delegate = context.coordinator
         return field
@@ -25,6 +29,9 @@ struct SearchField: NSViewRepresentable {
     func updateNSView(_ nsView: NSSearchField, context: Context) {
         if nsView.stringValue != query {
             nsView.stringValue = query
+        }
+        if nsView.font?.pointSize != fontSize {
+            nsView.font = .systemFont(ofSize: fontSize)
         }
     }
 

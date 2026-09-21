@@ -31,11 +31,11 @@ struct LaunchpadView: View {
                     .allowsHitTesting(false)
                     .ignoresSafeArea()
 
-                VStack(spacing: 24) {
+                VStack(spacing: 24 * metrics.scale) {
                     // Same 2.8:0.32 width:height ratio the field always had,
                     // now scaled off the grid's own screen-relative metrics
                     // instead of a fixed pixel size.
-                    SearchField(query: $store.searchQuery)
+                    SearchField(query: $store.searchQuery, fontSize: 20 * metrics.scale)
                         .frame(width: metrics.cellWidth * 2.8, height: metrics.cellHeight * 0.32)
 
                     if !store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -60,7 +60,7 @@ struct LaunchpadView: View {
                                     )
                                 }
                             }
-                            .padding(40)
+                            .padding(40 * metrics.scale)
                         }
                     } else {
                         // ponytail: `.tabViewStyle(.page)` (PageTabViewStyle) is marked
@@ -121,11 +121,11 @@ struct LaunchpadView: View {
                         }
 
                         if store.pages.count > 1 {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 8 * metrics.scale) {
                                 ForEach(store.pages.indices, id: \.self) { index in
                                     Circle()
                                         .fill(index == store.currentPage ? Color.white : Color.white.opacity(0.4))
-                                        .frame(width: 8, height: 8)
+                                        .frame(width: 8 * metrics.scale, height: 8 * metrics.scale)
                                         .onTapGesture { store.currentPage = index }
                                         // Dragging a dot onto another reorders the
                                         // pages themselves, the same drag-to-reorder

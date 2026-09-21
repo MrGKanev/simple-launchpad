@@ -16,19 +16,19 @@ struct FolderIconView: View {
         nonmutating set { isBouncingState.wrappedValue = newValue }
     }
 
-    private var miniIconSize: CGFloat { max(12, (metrics.imageSize - 16 - 3) / 2) }
+    private var miniIconSize: CGFloat { max(12, (metrics.imageSize - 16 * metrics.scale - 3 * metrics.scale) / 2) }
     private var columns: [GridItem] { [GridItem(.fixed(miniIconSize)), GridItem(.fixed(miniIconSize))] }
 
     var body: some View {
-        VStack(spacing: 8) {
-            LazyVGrid(columns: columns, spacing: 3) {
+        VStack(spacing: 8 * metrics.scale) {
+            LazyVGrid(columns: columns, spacing: 3 * metrics.scale) {
                 ForEach(Array(folder.apps.prefix(4)), id: \.bundleIdentifier) { app in
                     Image(nsImage: NSWorkspace.shared.icon(forFile: app.path.path))
                         .resizable()
                         .frame(width: miniIconSize, height: miniIconSize)
                 }
             }
-            .padding(8)
+            .padding(8 * metrics.scale)
             .frame(width: metrics.imageSize, height: metrics.imageSize)
             .background(RoundedRectangle(cornerRadius: metrics.imageSize * 0.19).fill(Color.white.opacity(0.15)))
             Text(folder.name)
@@ -38,7 +38,7 @@ struct FolderIconView: View {
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
         .background(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 14 * metrics.scale)
                 .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
         )
         .contentShape(Rectangle())
