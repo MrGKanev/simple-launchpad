@@ -78,7 +78,7 @@ struct LaunchpadView: View {
                                 store.save()
                             }
                         )
-                        .gesture(
+                        .simultaneousGesture(
                             DragGesture(minimumDistance: 40)
                                 .onEnded { value in
                                     if value.translation.width < 0, store.pages.indices.contains(currentPage + 1) {
