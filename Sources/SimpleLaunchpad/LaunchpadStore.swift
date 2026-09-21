@@ -14,6 +14,12 @@ enum LaunchpadItem: Equatable {
 final class LaunchpadStore: ObservableObject {
     @Published var pages: [[LaunchpadItem]] = []
 
+    // Owned here (rather than as view-local state) so `OverlayWindowController`
+    // can also drive page navigation directly from its window-level scroll and
+    // arrow-key monitors, alongside the SwiftUI views.
+    @Published var currentPage: Int = 0
+    @Published var searchQuery: String = ""
+
     private let itemsPerPage: Int
     private let persistenceURL: URL
 
@@ -25,11 +31,19 @@ final class LaunchpadStore: ObservableObject {
     func load(discoveredApps: [AppInfo] = AppDiscoveryService.scan()) {
         let savedLayout = LayoutPersistence.load(from: persistenceURL)
         pages = Self.merge(discoveredApps: discoveredApps, savedLayout: savedLayout, itemsPerPage: itemsPerPage)
+        currentPage = 0
+        searchQuery = ""
     }
 
     func save() {
         try? LayoutPersistence.save(Self.encode(pages: pages), to: persistenceURL)
     }
+
+    // Matches stock macOS Launchpad grouping its built-in utility apps
+    // (Terminal, Console, Disk Utility, Activity Monitor, ...) into one
+    // "Other" folder rather than scattering them across the main grid.
+    static let systemUtilitiesPathPrefix = "/System/Applications/Utilities/"
+    static let systemUtilitiesFolderName = "Other"
 
     static func merge(discoveredApps: [AppInfo], savedLayout: LayoutFile?, itemsPerPage: Int) -> [[LaunchpadItem]] {
         var appsByID = Dictionary(uniqueKeysWithValues: discoveredApps.map { ($0.bundleIdentifier, $0) })
@@ -53,10 +67,20 @@ final class LaunchpadStore: ObservableObject {
             }
         }
 
+        // Apps not already placed by a saved layout (including everything,
+        // the first time the app ever runs): sort alphabetically, but pull
+        // out anything under /System/Applications/Utilities into one shared
+        // "Other" folder instead of leaving them loose on the grid.
         let remainingApps = discoveredApps
             .filter { appsByID[$0.bundleIdentifier] != nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        orderedItems.append(contentsOf: remainingApps.map(LaunchpadItem.app))
+        let remainingUtilities = remainingApps.filter { $0.path.path.hasPrefix(systemUtilitiesPathPrefix) }
+        let remainingOthers = remainingApps.filter { !$0.path.path.hasPrefix(systemUtilitiesPathPrefix) }
+
+        orderedItems.append(contentsOf: remainingOthers.map(LaunchpadItem.app))
+        if !remainingUtilities.isEmpty {
+            orderedItems.append(.folder(FolderInfo(name: systemUtilitiesFolderName, apps: remainingUtilities)))
+        }
 
         guard !orderedItems.isEmpty else { return [] }
         return stride(from: 0, to: orderedItems.count, by: itemsPerPage).map {

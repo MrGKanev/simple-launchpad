@@ -5,54 +5,12 @@ struct LaunchpadView: View {
     let onSelect: (AppInfo) -> Void
     let onDismiss: () -> Void
 
-    // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State` attribute.
-    // On this SDK, `@State` expands via a compiler macro (SwiftUIMacros.StateMacro)
-    // whose plugin binary ships only inside Xcode.app; under Xcode Command Line
-    // Tools alone the plugin can't be found and `swift build` fails outright.
-    // `State<Value>` is still a plain struct underneath, so using it directly
-    // (bypassing the attribute sugar) is behaviorally identical without needing
-    // the missing macro plugin. Revert to `@State` once building with full Xcode.
-    private var currentPageState = SwiftUI.State(wrappedValue: 0)
-    private var currentPage: Int {
-        get { currentPageState.wrappedValue }
-        nonmutating set { currentPageState.wrappedValue = newValue }
-    }
-
-    private var searchQueryState = SwiftUI.State(wrappedValue: "")
-    private var searchQuery: String {
-        get { searchQueryState.wrappedValue }
-        nonmutating set { searchQueryState.wrappedValue = newValue }
-    }
-
-    private var lastPageChangeState = SwiftUI.State(wrappedValue: Date.distantPast)
-    private var lastPageChange: Date {
-        get { lastPageChangeState.wrappedValue }
-        nonmutating set { lastPageChangeState.wrappedValue = newValue }
-    }
-
     private var searchResults: [AppInfo] {
         let allApps = store.pages.flatMap { $0 }.compactMap { item -> AppInfo? in
             if case .app(let app) = item { return app }
             return nil
         }
-        return AppSearch.filter(allApps, query: searchQuery)
-    }
-
-    // Same left/right convention as the swipe DragGesture below: a negative
-    // delta (scrolling/swiping toward the left) advances to the next page.
-    // Debounced so one trackpad scroll gesture (which fires many small
-    // events) only flips a single page instead of racing through several.
-    private func handleScroll(_ delta: CGFloat) {
-        guard searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        guard abs(delta) > 4 else { return }
-        guard Date().timeIntervalSince(lastPageChange) > 0.5 else { return }
-        if delta < 0, store.pages.indices.contains(currentPage + 1) {
-            currentPage += 1
-            lastPageChange = Date()
-        } else if delta > 0, store.pages.indices.contains(currentPage - 1) {
-            currentPage -= 1
-            lastPageChange = Date()
-        }
+        return AppSearch.filter(allApps, query: store.searchQuery)
     }
 
     var body: some View {
@@ -71,9 +29,10 @@ struct LaunchpadView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 24) {
-                    SearchField(query: searchQueryState.projectedValue)
+                    SearchField(query: $store.searchQuery)
+                        .frame(width: 280, height: 32)
 
-                    if !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if !store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
                         ScrollView {
                             LazyVGrid(
                                 columns: Array(repeating: GridItem(.fixed(metrics.cellWidth), spacing: metrics.spacing), count: metrics.columns),
@@ -90,10 +49,11 @@ struct LaunchpadView: View {
                         // `@available(macOS, unavailable)` in SwiftUI — it only exists on
                         // iOS/tvOS/watchOS/visionOS, and macOS's default TabView style has
                         // no swipe gesture. So instead of a TabView we render the current
-                        // page directly and drive `currentPage` ourselves via tappable dots
-                        // and a DragGesture below.
-                        if store.pages.indices.contains(currentPage) {
-                            let pageIndex = currentPage
+                        // page directly and drive `store.currentPage` ourselves via
+                        // tappable dots and a DragGesture below (scrolling and arrow keys
+                        // are handled window-wide by `OverlayWindowController`).
+                        if store.pages.indices.contains(store.currentPage) {
+                            let pageIndex = store.currentPage
                             PageView(
                                 items: Binding(
                                     get: { store.pages[pageIndex] },
@@ -117,10 +77,10 @@ struct LaunchpadView: View {
                             .simultaneousGesture(
                                 DragGesture(minimumDistance: 40)
                                     .onEnded { value in
-                                        if value.translation.width < 0, store.pages.indices.contains(currentPage + 1) {
-                                            currentPage += 1
-                                        } else if value.translation.width > 0, store.pages.indices.contains(currentPage - 1) {
-                                            currentPage -= 1
+                                        if value.translation.width < 0, store.pages.indices.contains(store.currentPage + 1) {
+                                            store.currentPage += 1
+                                        } else if value.translation.width > 0, store.pages.indices.contains(store.currentPage - 1) {
+                                            store.currentPage -= 1
                                         }
                                     }
                             )
@@ -130,9 +90,9 @@ struct LaunchpadView: View {
                             HStack(spacing: 8) {
                                 ForEach(store.pages.indices, id: \.self) { index in
                                     Circle()
-                                        .fill(index == currentPage ? Color.white : Color.white.opacity(0.4))
+                                        .fill(index == store.currentPage ? Color.white : Color.white.opacity(0.4))
                                         .frame(width: 8, height: 8)
-                                        .onTapGesture { currentPage = index }
+                                        .onTapGesture { store.currentPage = index }
                                 }
                             }
                         }
@@ -143,7 +103,6 @@ struct LaunchpadView: View {
                 // only the content below it grows/shrinks as results change — centering
                 // here made the whole block visibly jump while typing a search query.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(ScrollPageMonitor(onScroll: handleScroll))
             }
         }
         .onAppear { store.load() }

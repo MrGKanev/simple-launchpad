@@ -18,7 +18,7 @@ struct IconGridMetrics {
         columns: 7, spacing: 28, cellWidth: 120, cellHeight: 130, imageSize: 84, font: .body
     )
 
-    static func fitting(_ size: CGSize, columns: Int = 7, rows: Int = 5, targetFraction: CGFloat = 0.7) -> IconGridMetrics {
+    static func fitting(_ size: CGSize, columns: Int = 7, rows: Int = 5, targetFraction: CGFloat = 0.6) -> IconGridMetrics {
         let baseSpacing: CGFloat = 28
         let baseCellWidth: CGFloat = 120
         let baseCellHeight: CGFloat = 130
