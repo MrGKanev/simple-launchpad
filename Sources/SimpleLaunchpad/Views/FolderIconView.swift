@@ -16,6 +16,22 @@ struct FolderIconView: View {
         nonmutating set { isBouncingState.wrappedValue = newValue }
     }
 
+    // The synthesized memberwise init would be `private` because of the
+    // `private` state property above, so it's spelled out explicitly here
+    // to stay accessible from other files (`isBouncingState` keeps its own
+    // default from the property declaration above).
+    init(
+        folder: FolderInfo,
+        metrics: IconGridMetrics = .fixed,
+        isSelected: Bool = false,
+        onTap: @escaping () -> Void
+    ) {
+        self.folder = folder
+        self.metrics = metrics
+        self.isSelected = isSelected
+        self.onTap = onTap
+    }
+
     private var miniIconSize: CGFloat { max(12, (metrics.imageSize - 16 * metrics.scale - 3 * metrics.scale) / 2) }
     private var columns: [GridItem] { [GridItem(.fixed(miniIconSize)), GridItem(.fixed(miniIconSize))] }
 
