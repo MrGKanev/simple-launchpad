@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     // `@ObservedObject` (unlike `@State`) is a plain property wrapper, not
@@ -26,6 +27,12 @@ struct SettingsView: View {
     private var updateStatus: String {
         get { updateStatusState.wrappedValue }
         nonmutating set { updateStatusState.wrappedValue = newValue }
+    }
+
+    private var layoutIOStatusState = SwiftUI.State(wrappedValue: "")
+    private var layoutIOStatus: String {
+        get { layoutIOStatusState.wrappedValue }
+        nonmutating set { layoutIOStatusState.wrappedValue = newValue }
     }
 
     // The synthesized memberwise init would be `private` because of the
@@ -68,6 +75,45 @@ struct SettingsView: View {
                     .frame(width: 120, height: 24)
             }
 
+            HStack {
+                Text("Appearance")
+                Spacer()
+                Picker("", selection: $preferences.appearance) {
+                    ForEach(LaunchpadAppearance.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 160)
+            }
+
+            // Only worth showing when there's actually a choice to make —
+            // a single-display Mac has nothing for "Main Display" or a
+            // named screen to mean beyond what "Follow Cursor" already does.
+            if NSScreen.screens.count > 1 {
+                HStack {
+                    Text("Show Launchpad On")
+                    Spacer()
+                    Picker("", selection: $preferences.displayPreference) {
+                        Text("Display with Cursor").tag(DisplayPreference.cursor)
+                        Text("Main Display").tag(DisplayPreference.main)
+                        ForEach(NSScreen.screens, id: \.localizedName) { screen in
+                            Text(screen.localizedName).tag(DisplayPreference.named(screen.localizedName))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 160)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Show search field", isOn: $preferences.showSearchField)
+                Toggle("Show category bar", isOn: $preferences.showCategoryBar)
+                Text("Turn either off for a leaner, icons-only grid.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
@@ -96,6 +142,21 @@ struct SettingsView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    Button("Export Layout…") { exportLayout() }
+                    Button("Import Layout…") { importLayout() }
+                }
+                if !layoutIOStatus.isEmpty {
+                    Text(layoutIOStatus)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Text("Save or load your grid — pages, folders, and category tweaks — to move it to another Mac.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
                 Button("Reset Layout…", role: .destructive) {
                     confirmAndResetLayout()
                 }
@@ -106,6 +167,34 @@ struct SettingsView: View {
         }
         .padding(24)
         .frame(width: 320, alignment: .leading)
+    }
+
+    private func exportLayout() {
+        let panel = NSSavePanel()
+        panel.title = "Export Launchpad Layout"
+        panel.nameFieldStringValue = "Launchpad Layout.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try store.exportLayout(to: url)
+            layoutIOStatus = "Exported to \(url.lastPathComponent)."
+        } catch {
+            layoutIOStatus = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func importLayout() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Launchpad Layout"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try store.importLayout(from: url)
+            layoutIOStatus = "Imported \(url.lastPathComponent)."
+        } catch {
+            layoutIOStatus = "Import failed: \(error.localizedDescription)"
+        }
     }
 
     private func confirmAndResetLayout() {

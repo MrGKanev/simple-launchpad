@@ -23,7 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store = LaunchpadStore()
         preferences = AppPreferences()
 
-        overlayController = OverlayWindowController(store: store, onLaunch: { [weak self] app in
+        overlayController = OverlayWindowController(store: store, preferences: preferences, onLaunch: { [weak self] app in
+            self?.store.recordLaunch(app)
             NSWorkspace.shared.open(app.path)
             // A beat before the overlay itself starts fading, so the tapped
             // icon's own "pop" (see `AppIconView`) has time to actually

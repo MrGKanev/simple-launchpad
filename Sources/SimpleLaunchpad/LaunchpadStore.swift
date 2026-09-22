@@ -18,16 +18,69 @@ final class LaunchpadStore: ObservableObject {
     // can also drive page navigation directly from its window-level scroll and
     // arrow-key monitors, alongside the SwiftUI views.
     @Published var currentPage: Int = 0 {
-        didSet { selectedIndex = 0 }
+        didSet {
+            selectedIndex = 0
+            hasKeyboardSelection = false
+        }
     }
     @Published var searchQuery: String = "" {
-        didSet { selectedIndex = 0 }
+        didSet {
+            selectedIndex = 0
+            hasKeyboardSelection = false
+        }
     }
+    // Which pill is selected in the bar under the search field (`.all` ==
+    // "All"). Combines with `searchQuery` in `filteredResults` rather than
+    // being mutually exclusive with it, so typing a query while a category
+    // is active narrows within that category instead of replacing it.
+    @Published var scope: LaunchpadScope = .all {
+        didSet {
+            selectedIndex = 0
+            hasKeyboardSelection = false
+        }
+    }
+    // How `filteredResults` orders whatever `scope` narrows down to —
+    // "Name" (default) or "Most Used". Exposed as a small control next to
+    // the category bar; irrelevant (and hidden) while `scope == .recentlyAdded`.
+    @Published var sortOption: LaunchpadSortOption = .name {
+        didSet {
+            selectedIndex = 0
+            hasKeyboardSelection = false
+        }
+    }
+    // Manual category reassignments (drag an icon onto a different pill),
+    // keyed by bundle identifier — overrides whatever `AppInfo.category` was
+    // auto-detected from Info.plist. Persisted separately from `pages` since
+    // it's keyed by app identity, not by grid position.
+    @Published var categoryOverrides: [String: AppCategory] = [:]
+    // Launch counts per bundle identifier, driving the "Most Used" sort.
+    @Published var launchCounts: [String: Int] = [:]
+    // Set by `CategoryFilterBar`'s `.onHover` while the pointer is over the
+    // pill row — lets `OverlayWindowController.handleScroll` step aside so a
+    // horizontal trackpad swipe there scrolls the pills instead of also
+    // flipping the current Launchpad page (its own global scroll-wheel
+    // monitor otherwise sees the exact same horizontal delta).
+    @Published var isHoveringCategoryBar: Bool = false
+    // Set by `OverlayWindowController.handleScroll` when a *plain* mouse
+    // wheel (vertical-only, no horizontal axis) scrolls while hovering the
+    // category bar — `ScrollView(.horizontal)` only ever reacts to a
+    // horizontal delta on its own, so a mouse with no horizontal wheel
+    // could otherwise never move the row at all. `CategoryFilterBar` steps
+    // itself by a few pills each time this changes (a fresh id every time,
+    // so repeated same-direction nudges keep firing).
+    @Published var categoryBarScrollNudge: CategoryBarScrollNudge?
 
     // Index of the keyboard-highlighted icon within whatever's currently
-    // visible (the current page's items, or `searchResults` while
-    // searching) — driven by `OverlayWindowController`'s arrow-key monitor.
+    // visible (the current page's items, or `filteredResults` while
+    // searching/category-filtering) — driven by `OverlayWindowController`'s
+    // arrow-key monitor.
     @Published var selectedIndex: Int = 0
+    // Whether an arrow key has actually been pressed since the current page
+    // (or search) became active. `selectedIndex` starts at 0 by default, but
+    // the highlight it drives should stay hidden until the user has really
+    // started navigating with the keyboard — otherwise the first icon always
+    // looks selected even on a plain hover-and-click.
+    @Published var hasKeyboardSelection: Bool = false
     // Which folder popup is open, if any. Lives here (rather than as
     // view-local state in `PageView`) so pressing Return on a
     // keyboard-selected folder can open it from `OverlayWindowController`,
@@ -44,6 +97,12 @@ final class LaunchpadStore: ObservableObject {
 
     private let itemsPerPage: Int
     private let persistenceURL: URL
+    private var categoryOverridesURL: URL {
+        persistenceURL.deletingLastPathComponent().appendingPathComponent("categoryOverrides.json")
+    }
+    private var launchCountsURL: URL {
+        persistenceURL.deletingLastPathComponent().appendingPathComponent("launchCounts.json")
+    }
 
     init(itemsPerPage: Int = 35, persistenceURL: URL = LayoutPersistence.defaultURL()) {
         self.itemsPerPage = itemsPerPage
@@ -55,6 +114,31 @@ final class LaunchpadStore: ObservableObject {
         pages = Self.merge(discoveredApps: discoveredApps, savedLayout: savedLayout, itemsPerPage: itemsPerPage)
         currentPage = 0
         searchQuery = ""
+        scope = .all
+        categoryOverrides = LayoutPersistence.loadDictionary(AppCategory.self, from: categoryOverridesURL)
+        launchCounts = LayoutPersistence.loadDictionary(Int.self, from: launchCountsURL)
+    }
+
+    // The category a given app should actually be filtered/grouped under —
+    // a manual override (dragged onto a different pill) if one exists,
+    // otherwise whatever was auto-detected from Info.plist.
+    func effectiveCategory(for app: AppInfo) -> AppCategory {
+        categoryOverrides[app.bundleIdentifier] ?? app.category
+    }
+
+    // Called when the user drags an app icon onto a category pill in
+    // `CategoryFilterBar` — reassigns it there from then on, independent of
+    // whatever the app itself declares.
+    func setCategoryOverride(_ category: AppCategory, forBundleIdentifier bundleIdentifier: String) {
+        categoryOverrides[bundleIdentifier] = category
+        try? LayoutPersistence.saveDictionary(categoryOverrides, to: categoryOverridesURL)
+    }
+
+    // Called by `AppDelegate` right before actually opening an app, so
+    // "Most Used" reflects real usage instead of just grid position.
+    func recordLaunch(_ app: AppInfo) {
+        launchCounts[app.bundleIdentifier, default: 0] += 1
+        try? LayoutPersistence.saveDictionary(launchCounts, to: launchCountsURL)
     }
 
     // Rebuilds the grid from scratch, alphabetically, exactly like a
@@ -71,16 +155,104 @@ final class LaunchpadStore: ObservableObject {
         try? LayoutPersistence.save(Self.encode(pages: pages), to: persistenceURL)
     }
 
-    // The flat, filtered list search switches the grid to — ignores pages
-    // and folders entirely, matching stock Launchpad's search behavior.
-    // Shared by `LaunchpadView` (to render it) and `OverlayWindowController`
-    // (to know what Return should launch while searching).
-    var searchResults: [AppInfo] {
-        let allApps = pages.flatMap { $0 }.compactMap { item -> AppInfo? in
+    // Bundles the grid layout together with manual category overrides —
+    // everything a user would expect "their Launchpad setup" to mean —
+    // into one file for Settings' Export/Import. Launch counts are left out
+    // deliberately: usage history from one Mac isn't something you'd want
+    // silently overwriting another's when importing.
+    func exportLayout(to url: URL) throws {
+        let bundle = LayoutExportBundle(layout: Self.encode(pages: pages), categoryOverrides: categoryOverrides)
+        let data = try JSONEncoder().encode(bundle)
+        try data.write(to: url, options: .atomic)
+    }
+
+    // Applies an exported bundle against whatever's actually installed on
+    // *this* Mac — same reconciliation `load()` does against a saved
+    // layout, so an app the export references but this machine doesn't
+    // have is simply dropped rather than left as a dangling icon.
+    func importLayout(from url: URL, discoveredApps: [AppInfo] = AppDiscoveryService.scan()) throws {
+        let data = try Data(contentsOf: url)
+        let bundle = try JSONDecoder().decode(LayoutExportBundle.self, from: data)
+        pages = Self.merge(discoveredApps: discoveredApps, savedLayout: bundle.layout, itemsPerPage: itemsPerPage)
+        categoryOverrides = bundle.categoryOverrides
+        currentPage = 0
+        searchQuery = ""
+        scope = .all
+        save()
+        try? LayoutPersistence.saveDictionary(categoryOverrides, to: categoryOverridesURL)
+    }
+
+    private var trimmedSearchQuery: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // True whenever the grid should switch from the normal paged view to
+    // the flat, filtered one below — either a search is active, a category
+    // (or "Recently Added") pill is selected, or both.
+    var isFiltering: Bool {
+        !trimmedSearchQuery.isEmpty || scope != .all
+    }
+
+    // Every app across every page/folder, flattened once — the base list
+    // both `filteredResults` and `availableCategories` filter/derive from.
+    private var allApps: [AppInfo] {
+        pages.flatMap { $0 }.compactMap { item -> AppInfo? in
             if case .app(let app) = item { return app }
             return nil
         }
-        return AppSearch.filter(allApps, query: searchQuery)
+    }
+
+    // The categories to actually show as pills: only ones that have at
+    // least one installed app (checking `effectiveCategory`, so a manual
+    // override can make a pill appear/disappear too), in stable declaration
+    // order (mirrors Launchpad's own category list rather than sorting
+    // alphabetically or by frequency).
+    var availableCategories: [AppCategory] {
+        let present = Set(allApps.map(effectiveCategory(for:)))
+        return AppCategory.allCases.filter { present.contains($0) }
+    }
+
+    private func sorted(_ apps: [AppInfo]) -> [AppInfo] {
+        switch sortOption {
+        case .name:
+            return apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .mostUsed:
+            return apps.sorted { lhs, rhs in
+                let lhsCount = launchCounts[lhs.bundleIdentifier] ?? 0
+                let rhsCount = launchCounts[rhs.bundleIdentifier] ?? 0
+                if lhsCount != rhsCount { return lhsCount > rhsCount }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
+    }
+
+    // The flat, filtered list search/category/"Recently Added" switch the
+    // grid to — ignores pages and folders entirely, matching stock
+    // Launchpad's search behavior. Shared by `LaunchpadView` (to render it)
+    // and `OverlayWindowController` (to know what Return should launch, and
+    // how many items arrow keys can move across, while filtering).
+    var filteredResults: [AppInfo] {
+        let scoped: [AppInfo]
+        switch scope {
+        case .all:
+            scoped = allApps
+        case .recentlyAdded:
+            scoped = allApps.sorted { ($0.dateAdded ?? .distantPast) > ($1.dateAdded ?? .distantPast) }
+        case .category(let category):
+            scoped = allApps.filter { effectiveCategory(for: $0) == category }
+        }
+
+        guard !trimmedSearchQuery.isEmpty else {
+            // "Recently Added" keeps its own date order regardless of
+            // `sortOption` — same as stock Launchpad's equivalent view isn't
+            // independently re-sortable either.
+            return scope == .recentlyAdded ? scoped : sorted(scoped)
+        }
+        let matched = AppSearch.filter(scoped, query: searchQuery)
+        // `AppSearch.filter` already sorts alphabetically on its own, but
+        // re-sorting here lets "Most Used" apply while searching too,
+        // instead of only in the unfiltered/category views.
+        return scope == .recentlyAdded ? matched : sorted(matched)
     }
 
     // Removes an app wherever it is — loose on a page or tucked inside a

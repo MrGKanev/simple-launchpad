@@ -4,7 +4,13 @@ import UniformTypeIdentifiers
 struct PageView: View {
     @Binding var items: [LaunchpadItem]
     let metrics: IconGridMetrics
+    var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
     let selectedIndex: Int
+    // Only true once an arrow key has actually been pressed — see
+    // `LaunchpadStore.hasKeyboardSelection`. Keeps `selectedIndex`'s default
+    // of 0 from drawing a highlight around the first icon before the user
+    // has touched the keyboard.
+    let hasKeyboardSelection: Bool
     // Lives in `LaunchpadStore` (not view-local state here) so a
     // keyboard-selected folder can also be opened from
     // `OverlayWindowController`'s Return-key handling, outside SwiftUI.
@@ -89,6 +95,7 @@ struct PageView: View {
                 FolderView(
                     folder: folder,
                     metrics: metrics,
+                    palette: palette,
                     onSelect: onSelect,
                     onRemove: onRemoveApp,
                     onUninstall: onUninstallApp,
@@ -114,7 +121,8 @@ struct PageView: View {
             AppIconView(
                 app: app,
                 metrics: metrics,
-                isSelected: index == selectedIndex,
+                isSelected: hasKeyboardSelection && index == selectedIndex,
+                palette: palette,
                 onTap: { onSelect(app) },
                 onRemove: { onRemoveApp(app) },
                 onUninstall: { onUninstallApp(app) },
@@ -128,7 +136,8 @@ struct PageView: View {
             FolderIconView(
                 folder: folder,
                 metrics: metrics,
-                isSelected: index == selectedIndex,
+                isSelected: hasKeyboardSelection && index == selectedIndex,
+                palette: palette,
                 onTap: { openFolder = folder }
             )
         }

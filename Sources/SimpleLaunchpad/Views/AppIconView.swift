@@ -5,6 +5,7 @@ struct AppIconView: View {
     let app: AppInfo
     var metrics: IconGridMetrics = .fixed
     var isSelected: Bool = false
+    var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
     let onTap: () -> Void
     // nil hides the "Remove from Launchpad" context menu entirely.
     var onRemove: (() -> Void)? = nil
@@ -42,6 +43,7 @@ struct AppIconView: View {
         app: AppInfo,
         metrics: IconGridMetrics = .fixed,
         isSelected: Bool = false,
+        palette: LaunchpadPalette = LaunchpadPalette(isDark: true),
         onTap: @escaping () -> Void,
         onRemove: (() -> Void)? = nil,
         onUninstall: (() -> Void)? = nil,
@@ -54,6 +56,7 @@ struct AppIconView: View {
         self.app = app
         self.metrics = metrics
         self.isSelected = isSelected
+        self.palette = palette
         self.onTap = onTap
         self.onRemove = onRemove
         self.onUninstall = onUninstall
@@ -71,13 +74,13 @@ struct AppIconView: View {
                 .frame(width: metrics.imageSize, height: metrics.imageSize)
             Text(app.name)
                 .font(metrics.font)
-                .foregroundColor(.white)
+                .foregroundColor(palette.text)
                 .lineLimit(1)
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
         .background(
             RoundedRectangle(cornerRadius: 14 * metrics.scale)
-                .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
+                .fill(isSelected ? palette.selectionFill : Color.clear)
         )
         .overlay(alignment: .topTrailing) {
             if isMultiSelected {

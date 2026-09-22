@@ -5,6 +5,7 @@ struct FolderIconView: View {
     let folder: FolderInfo
     var metrics: IconGridMetrics = .fixed
     var isSelected: Bool = false
+    var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
     let onTap: () -> Void
 
     // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
@@ -24,11 +25,13 @@ struct FolderIconView: View {
         folder: FolderInfo,
         metrics: IconGridMetrics = .fixed,
         isSelected: Bool = false,
+        palette: LaunchpadPalette = LaunchpadPalette(isDark: true),
         onTap: @escaping () -> Void
     ) {
         self.folder = folder
         self.metrics = metrics
         self.isSelected = isSelected
+        self.palette = palette
         self.onTap = onTap
     }
 
@@ -46,16 +49,16 @@ struct FolderIconView: View {
             }
             .padding(8 * metrics.scale)
             .frame(width: metrics.imageSize, height: metrics.imageSize)
-            .background(RoundedRectangle(cornerRadius: metrics.imageSize * 0.19).fill(Color.white.opacity(0.15)))
+            .background(RoundedRectangle(cornerRadius: metrics.imageSize * 0.19).fill(palette.folderTileFill))
             Text(folder.name)
                 .font(metrics.font)
-                .foregroundColor(.white)
+                .foregroundColor(palette.text)
                 .lineLimit(1)
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
         .background(
             RoundedRectangle(cornerRadius: 14 * metrics.scale)
-                .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
+                .fill(isSelected ? palette.selectionFill : Color.clear)
         )
         .contentShape(Rectangle())
         .scaleEffect(isBouncing ? 0.85 : 1.0)

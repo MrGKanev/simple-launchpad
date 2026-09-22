@@ -7,6 +7,7 @@ struct FolderView: View {
     // the popup scales the same way the grid behind it does on any screen
     // size — `.fixed` only as a fallback for previews/tests.
     var metrics: IconGridMetrics = .fixed
+    var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
     let onSelect: (AppInfo) -> Void
     let onRemove: (AppInfo) -> Void
     var onUninstall: ((AppInfo) -> Void)? = nil
@@ -50,6 +51,7 @@ struct FolderView: View {
     init(
         folder: FolderInfo,
         metrics: IconGridMetrics = .fixed,
+        palette: LaunchpadPalette = LaunchpadPalette(isDark: true),
         onSelect: @escaping (AppInfo) -> Void,
         onRemove: @escaping (AppInfo) -> Void,
         onUninstall: ((AppInfo) -> Void)? = nil,
@@ -63,6 +65,7 @@ struct FolderView: View {
     ) {
         self.folder = folder
         self.metrics = metrics
+        self.palette = palette
         self.onSelect = onSelect
         self.onRemove = onRemove
         self.onUninstall = onUninstall
@@ -123,7 +126,7 @@ struct FolderView: View {
         // that isn't an icon closes it. `AppIconView`'s own tap gesture wins
         // over this background one on the icons themselves, so both coexist.
         ZStack {
-            Color.black.opacity(0.85)
+            palette.folderBackdrop
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if isEditingName {
@@ -144,6 +147,7 @@ struct FolderView: View {
                             AppIconView(
                                 app: app,
                                 metrics: metrics,
+                                palette: palette,
                                 onTap: {
                                     onSelect(app)
                                     onDismiss()
@@ -178,14 +182,14 @@ struct FolderView: View {
             TextField("Folder Name", text: Binding(get: { editedName }, set: { editedName = $0 }))
                 .textFieldStyle(.plain)
                 .font(titleFont)
-                .foregroundColor(.white)
+                .foregroundColor(palette.text)
                 .multilineTextAlignment(.center)
                 .frame(width: popupWidth * 0.6)
                 .onSubmit { commitRename() }
         } else {
             Text(folder.name)
                 .font(titleFont)
-                .foregroundColor(.white)
+                .foregroundColor(palette.text)
                 .onTapGesture {
                     editedName = folder.name
                     isEditingName = true

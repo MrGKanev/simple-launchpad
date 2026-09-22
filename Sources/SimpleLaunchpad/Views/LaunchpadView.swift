@@ -1,13 +1,36 @@
 import SwiftUI
+import AppKit
 
 struct LaunchpadView: View {
     @ObservedObject var store: LaunchpadStore
+    @ObservedObject var preferences: AppPreferences
     let onSelect: (AppInfo) -> Void
     let onDismiss: () -> Void
+
+    // Resolved once per render from the "Appearance" Settings preference —
+    // `.system` mirrors whatever macOS is currently in (so the overlay
+    // still looks the same as it always did unless the user opts into an
+    // explicit Light/Dark override). Threaded explicitly through every
+    // child view's `palette:` parameter (the same convention `metrics:`
+    // already uses) rather than SwiftUI's environment, since this view
+    // would otherwise need to apply `.preferredColorScheme` to its own
+    // returned content and then separately read it back for its own inline
+    // colors — two different things trying to agree on one value.
+    private var palette: LaunchpadPalette {
+        switch preferences.appearance {
+        case .system:
+            return LaunchpadPalette(isDark: NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) != .aqua)
+        case .light:
+            return LaunchpadPalette(isDark: false)
+        case .dark:
+            return LaunchpadPalette(isDark: true)
+        }
+    }
 
     var body: some View {
         GeometryReader { geometry in
             let metrics = IconGridMetrics.fitting(geometry.size)
+            let palette = palette
 
             ZStack {
                 VisualEffectBlur(material: .fullScreenUI, blendingMode: .behindWindow)
@@ -27,28 +50,58 @@ struct LaunchpadView: View {
                         }
                     }
 
-                Color.black.opacity(0.18) // dark tint over the blur so icons/text stay readable
+                palette.backdropTint // tint over the blur so icons/text stay readable in either theme
                     .allowsHitTesting(false)
                     .ignoresSafeArea()
 
-                VStack(spacing: 24 * metrics.scale) {
-                    // Same 2.8:0.32 width:height ratio the field always had,
-                    // now scaled off the grid's own screen-relative metrics
-                    // instead of a fixed pixel size.
-                    SearchField(query: $store.searchQuery, fontSize: 20 * metrics.scale)
-                        .frame(width: metrics.cellWidth * 2.8, height: metrics.cellHeight * 0.32)
+                VStack(spacing: 28 * metrics.scale) {
+                    // Same 2.8-wide ratio the field always had, scaled off
+                    // the grid's own screen-relative metrics instead of a
+                    // fixed pixel size. Height is a bit taller than that
+                    // original 0.32 ratio for a roomier field — font size is
+                    // set independently below so it doesn't grow with it.
+                    // The `Capsule` fill (rather than the search field's own
+                    // native bezel — see `SearchField`) is the same shape
+                    // and shade as an unselected category pill, so the two
+                    // rows read as one matching set of controls.
+                    if preferences.showSearchField {
+                        ZStack {
+                            Capsule().fill(palette.pillFill)
+                            SearchField(query: $store.searchQuery, fontSize: 20 * metrics.scale, palette: palette)
+                                .padding(.horizontal, 16 * metrics.scale)
+                        }
+                        .frame(width: metrics.cellWidth * 2.8, height: metrics.cellHeight * 0.4)
+                        .clipShape(Capsule())
+                    }
 
-                    if !store.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if preferences.showCategoryBar, !store.availableCategories.isEmpty {
+                        CategoryFilterBar(
+                            categories: store.availableCategories,
+                            scope: $store.scope,
+                            sortOption: $store.sortOption,
+                            isFiltering: store.isFiltering,
+                            metrics: metrics,
+                            palette: palette,
+                            isHovering: $store.isHoveringCategoryBar,
+                            scrollNudge: store.categoryBarScrollNudge,
+                            onDropBundleIdentifier: { bundleIdentifier, category in
+                                store.setCategoryOverride(category, forBundleIdentifier: bundleIdentifier)
+                            }
+                        )
+                    }
+
+                    if store.isFiltering {
                         ScrollView {
                             LazyVGrid(
                                 columns: Array(repeating: GridItem(.fixed(metrics.cellWidth), spacing: metrics.spacing), count: metrics.columns),
                                 spacing: metrics.spacing
                             ) {
-                                ForEach(Array(store.searchResults.enumerated()), id: \.element.bundleIdentifier) { index, app in
+                                ForEach(Array(store.filteredResults.enumerated()), id: \.element.bundleIdentifier) { index, app in
                                     AppIconView(
                                         app: app,
                                         metrics: metrics,
-                                        isSelected: index == store.selectedIndex,
+                                        isSelected: store.hasKeyboardSelection && index == store.selectedIndex,
+                                        palette: palette,
                                         onTap: { onSelect(app) },
                                         onRemove: { store.removeApp(app) },
                                         onUninstall: { store.uninstallApp(app) },
@@ -58,6 +111,14 @@ struct LaunchpadView: View {
                                         onBulkRemove: { store.removeSelectedApps() },
                                         onBulkUninstall: { store.uninstallSelectedApps() }
                                     )
+                                    // Lets a category pill above accept this icon
+                                    // as a manual category reassignment — see
+                                    // `CategoryFilterBar`. Only the filtered grid
+                                    // (search/category view) supports this, not
+                                    // the normal paged grid, since that's the
+                                    // context where category pills are actually
+                                    // visible alongside the icons.
+                                    .onDrag { NSItemProvider(object: "APP:\(app.bundleIdentifier)" as NSString) }
                                 }
                             }
                             .padding(40 * metrics.scale)
@@ -91,7 +152,9 @@ struct LaunchpadView: View {
                                     }
                                 ),
                                 metrics: metrics,
+                                palette: palette,
                                 selectedIndex: store.selectedIndex,
+                                hasKeyboardSelection: store.hasKeyboardSelection,
                                 openFolder: $store.openFolder,
                                 onSelect: onSelect,
                                 onRemoveApp: { app in store.removeApp(app) },
@@ -134,7 +197,7 @@ struct LaunchpadView: View {
                             HStack(spacing: 8 * metrics.scale) {
                                 ForEach(store.pages.indices, id: \.self) { index in
                                     Circle()
-                                        .fill(index == store.currentPage ? Color.white : Color.white.opacity(0.4))
+                                        .fill(index == store.currentPage ? palette.dotActive : palette.dotInactive)
                                         .frame(width: 8 * metrics.scale, height: 8 * metrics.scale)
                                         .onTapGesture { store.currentPage = index }
                                         // Dragging a dot onto another reorders the

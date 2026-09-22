@@ -12,6 +12,7 @@ struct SearchField: NSViewRepresentable {
     // text tracks the rest of the overlay's screen-relative sizing instead
     // of staying a fixed point size on every display.
     var fontSize: CGFloat = 20
+    var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
 
     func makeCoordinator() -> Coordinator {
         Coordinator(query: $query)
@@ -19,10 +20,16 @@ struct SearchField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
-        field.placeholderString = "Search"
         field.font = .systemFont(ofSize: fontSize)
         field.focusRingType = .none
         field.delegate = context.coordinator
+        // No native bezel/background — `LaunchpadView` draws a `Capsule`
+        // behind this instead, so the field reads as the exact same pill
+        // shape as the category bar right below it rather than AppKit's own
+        // fixed-radius rounded-rect search field look.
+        field.isBezeled = false
+        field.drawsBackground = false
+        applyPalette(to: field)
         return field
     }
 
@@ -33,6 +40,20 @@ struct SearchField: NSViewRepresentable {
         if nsView.font?.pointSize != fontSize {
             nsView.font = .systemFont(ofSize: fontSize)
         }
+        applyPalette(to: nsView)
+    }
+
+    // Text/placeholder color no longer comes for free from a native bezel
+    // (see `isBezeled`/`drawsBackground` above), so it's driven explicitly
+    // off the same palette every other piece of overlay chrome uses —
+    // otherwise dark text would vanish against a dark "Light" pill fill,
+    // and vice versa.
+    private func applyPalette(to field: NSSearchField) {
+        field.textColor = NSColor(palette.text)
+        field.placeholderAttributedString = NSAttributedString(
+            string: "Search",
+            attributes: [.foregroundColor: NSColor(palette.secondaryText)]
+        )
     }
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
