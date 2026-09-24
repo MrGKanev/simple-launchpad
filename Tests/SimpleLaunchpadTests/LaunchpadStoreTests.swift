@@ -6,6 +6,10 @@ final class LaunchpadStoreTests: XCTestCase {
         AppInfo(bundleIdentifier: id, name: name, path: URL(fileURLWithPath: "/Applications/\(name).app"))
     }
 
+    private func utilityApp(_ id: String, _ name: String) -> AppInfo {
+        AppInfo(bundleIdentifier: id, name: name, path: URL(fileURLWithPath: "/System/Applications/Utilities/\(name).app"))
+    }
+
     func testMergePreservesSavedOrderForKnownApps() {
         let a = app("com.a", "Alpha")
         let b = app("com.b", "Beta")
@@ -64,6 +68,25 @@ final class LaunchpadStoreTests: XCTestCase {
         XCTAssertEqual(pages.count, 3)
         XCTAssertEqual(pages[0].count, 2)
         XCTAssertEqual(pages[2].count, 1)
+    }
+
+    func testMergeGroupsSystemUtilitiesIntoOtherFolder() {
+        let a = app("com.a", "Alpha")
+        let terminal = utilityApp("com.apple.terminal", "Terminal")
+        let console = utilityApp("com.apple.console", "Console")
+
+        let pages = LaunchpadStore.merge(discoveredApps: [a, terminal, console], savedLayout: nil, itemsPerPage: 10)
+
+        XCTAssertEqual(pages, [[.app(a), .folder(FolderInfo(name: "Other", apps: [console, terminal]))]])
+    }
+
+    func testMergePreservesExistingOtherFolderFromSavedLayout() {
+        let terminal = utilityApp("com.apple.terminal", "Terminal")
+        let savedLayout = LayoutFile(pages: [[.folder(name: "Other", bundleIdentifiers: ["com.apple.terminal"])]])
+
+        let pages = LaunchpadStore.merge(discoveredApps: [terminal], savedLayout: savedLayout, itemsPerPage: 10)
+
+        XCTAssertEqual(pages, [[.folder(FolderInfo(name: "Other", apps: [terminal]))]])
     }
 
     func testMergingIntoFolderCombinesTwoApps() {

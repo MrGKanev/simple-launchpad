@@ -4,6 +4,13 @@ struct LayoutFile: Codable, Equatable {
     var pages: [[LayoutItem]]
 }
 
+// What Settings' "Export Layout…"/"Import Layout…" reads and writes — see
+// `LaunchpadStore.exportLayout`/`importLayout`.
+struct LayoutExportBundle: Codable, Equatable {
+    var layout: LayoutFile
+    var categoryOverrides: [String: AppCategory]
+}
+
 enum LayoutItem: Codable, Equatable {
     case app(bundleIdentifier: String)
     case folder(name: String, bundleIdentifiers: [String])
@@ -60,6 +67,22 @@ enum LayoutPersistence {
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(layout)
+        try data.write(to: url, options: .atomic)
+    }
+
+    // Small keyed-by-bundle-identifier JSON dictionaries — `categoryOverrides`
+    // (manual drag-onto-a-pill category reassignments) and `launchCounts`
+    // ("Most Used" sort) both fit this same shape, so they share one pair of
+    // generic helpers instead of two near-duplicate load/save functions.
+    static func loadDictionary<Value: Decodable>(_ type: Value.Type, from url: URL) -> [String: Value] {
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        return (try? JSONDecoder().decode([String: Value].self, from: data)) ?? [:]
+    }
+
+    static func saveDictionary<Value: Encodable>(_ dictionary: [String: Value], to url: URL) throws {
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(dictionary)
         try data.write(to: url, options: .atomic)
     }
 }

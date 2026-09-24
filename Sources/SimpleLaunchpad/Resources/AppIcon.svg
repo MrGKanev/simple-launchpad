@@ -1,0 +1,21 @@
+<?xml version="1.0" ?>
+
+<svg width="800px" height="800px" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+
+<defs>
+
+<style>.cls-1{fill:#8c9eff;}.cls-2{fill:#5f7cf9;}</style>
+
+</defs>
+
+<title/>
+
+<g data-name="Home page" id="Home_page">
+
+<rect class="cls-1" height="22" rx="4" ry="4" width="22" x="5" y="5"/>
+
+<path class="cls-2" d="M23,5H16V27h7a4,4,0,0,0,4-4V9A4,4,0,0,0,23,5Z"/>
+
+</g>
+
+</svg>
