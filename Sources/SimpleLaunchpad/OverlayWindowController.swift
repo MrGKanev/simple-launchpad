@@ -27,6 +27,8 @@ final class OverlayWindowController: NSWindowController {
     private var isPresented = false
     private var visibilityChange = UUID()
     private var lastPageChange = Date.distantPast
+    private var pageScrollDistance: CGFloat = 0
+    private var didPageDuringGesture = false
     private var lastCategoryBarNudge = Date.distantPast
     // The app Space/Quick Look is currently previewing, if any — see
     // `QLPreviewPanelDataSource` below.
@@ -202,8 +204,8 @@ final class OverlayWindowController: NSWindowController {
         }
 
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self else { return event }
-            self.handleScroll(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY)
+            guard let self, event.window === self.window else { return event }
+            self.handleScroll(event)
             return event
         }
     }
@@ -246,7 +248,13 @@ final class OverlayWindowController: NSWindowController {
     // Debounced so one trackpad scroll gesture (which fires many small
     // events) only flips a single page — or steps the category bar by one
     // notch — instead of racing through several.
-    private func handleScroll(deltaX: CGFloat, deltaY: CGFloat) {
+    private func handleScroll(_ event: NSEvent) {
+        let deltaX = event.scrollingDeltaX
+        let deltaY = event.scrollingDeltaY
+        if event.phase.contains(.began) {
+            pageScrollDistance = 0
+            didPageDuringGesture = false
+        }
         if store.isHoveringCategoryBar {
             // A trackpad's own horizontal swipe already scrolls the pill
             // row natively (`ScrollView(.horizontal)` in
@@ -255,7 +263,7 @@ final class OverlayWindowController: NSWindowController {
             // help, translated into stepping the row instead, since a
             // horizontal `ScrollView` never reacts to a Y-only delta on
             // its own.
-            guard deltaX == 0, abs(deltaY) > 1 else { return }
+            guard !event.hasPreciseScrollingDeltas, abs(deltaY) > 0 else { return }
             guard Date().timeIntervalSince(lastCategoryBarNudge) > 0.25 else { return }
             lastCategoryBarNudge = Date()
             // Natural-scrolling convention: scrolling down (negative deltaY)
@@ -269,13 +277,22 @@ final class OverlayWindowController: NSWindowController {
         // scrolling over it (or its backdrop) must stay scoped to the
         // folder, not also page the grid behind it.
         guard store.openFolder == nil else { return }
-        let delta = deltaX != 0 ? deltaX : deltaY
-        guard abs(delta) > 1 else { return }
-        guard Date().timeIntervalSince(lastPageChange) > 0.35 else { return }
+        guard event.momentumPhase.isEmpty else { return }
+        let delta = abs(deltaX) > abs(deltaY) ? deltaX : deltaY
+        guard delta != 0 else { return }
+        if !event.phase.isEmpty {
+            guard !didPageDuringGesture else { return }
+            pageScrollDistance += delta
+            guard abs(pageScrollDistance) >= 24 else { return }
+            didPageDuringGesture = true
+        } else {
+            guard Date().timeIntervalSince(lastPageChange) > 0.18 else { return }
+        }
         // Same convention as the swipe gesture: scrolling/swiping left advances.
-        if delta < 0 {
+        let direction = event.phase.isEmpty ? delta : pageScrollDistance
+        if direction < 0 {
             changePage(by: 1)
-        } else if delta > 0 {
+        } else if direction > 0 {
             changePage(by: -1)
         }
     }

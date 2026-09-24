@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // The row of category pills under the search field — mirrors the category
 // browser in macOS's newer Launchpad/App grid. "All" and "Recently Added"
@@ -48,6 +49,8 @@ struct CategoryFilterBar: View {
     }
 
     private let chevronStep = 3
+    private var scrollViewState = SwiftUI.State<NSScrollView?>(initialValue: nil)
+    private var dragOriginState = SwiftUI.State<CGFloat?>(initialValue: nil)
 
     init(
         categories: [AppCategory],
@@ -106,14 +109,36 @@ struct CategoryFilterBar: View {
                             }
                         }
                         .padding(.horizontal, 2 * metrics.scale)
+                        .background(CategoryScrollReader { scrollView in
+                            if scrollViewState.wrappedValue !== scrollView {
+                                scrollViewState.wrappedValue = scrollView
+                            }
+                        })
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 5)
+                                .onChanged { value in
+                                    guard let scrollView = scrollViewState.wrappedValue,
+                                          let document = scrollView.documentView else { return }
+                                    let clip = scrollView.contentView
+                                    if dragOriginState.wrappedValue == nil {
+                                        dragOriginState.wrappedValue = clip.bounds.origin.x
+                                    }
+                                    let origin = dragOriginState.wrappedValue ?? 0
+                                    let limit = max(0, document.frame.width - clip.bounds.width)
+                                    clip.scroll(to: NSPoint(x: min(limit, max(0, origin - value.translation.width)), y: clip.bounds.origin.y))
+                                    scrollView.reflectScrolledClipView(clip)
+                                }
+                                .onEnded { _ in dragOriginState.wrappedValue = nil }
+                        )
                     }
                     .frame(maxWidth: .infinity)
-                    .onHover { isHovering = $0 }
 
                     if pillIDs.count > 6 {
                         chevron(systemName: "chevron.right") { step(.forward, proxy: proxy) }
                     }
                 }
+                .onHover { isHovering = $0 }
+                .onDisappear { isHovering = false }
                 // A plain (non-trackpad) mouse wheel has no horizontal axis
                 // for the `ScrollView` above to react to on its own — see
                 // `OverlayWindowController.handleScroll`, which turns that
@@ -190,6 +215,20 @@ struct CategoryFilterBar: View {
             .background(Circle().fill(palette.pillSelectedFill))
             .contentShape(Circle())
             .onTapGesture(perform: action)
+    }
+}
+
+// Reuse the native scroll view so mouse dragging and trackpad scrolling
+// share the same content offset and bounds.
+private struct CategoryScrollReader: NSViewRepresentable {
+    let onResolve: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { [weak view] in
+            if let scrollView = view?.enclosingScrollView { onResolve(scrollView) }
+        }
     }
 }
 
