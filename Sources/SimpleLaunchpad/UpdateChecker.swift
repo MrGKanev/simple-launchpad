@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 // A hand-rolled updater instead of a framework like Sparkle: this app isn't
-// code-signed/notarized (see CLAUDE.md design spec non-goals), and Sparkle
+// code-signed/notarized, and Sparkle
 // expects EdDSA-signed updates plus an appcast feed — infrastructure this
 // project doesn't have. This instead reads GitHub's own "latest release"
 // API directly and swaps the app bundle in place.
