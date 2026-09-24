@@ -13,6 +13,10 @@ struct SearchField: NSViewRepresentable {
     // of staying a fixed point size on every display.
     var fontSize: CGFloat = 20
     var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
+    // Hands the created `NSSearchField` back up so `OverlayWindowController`
+    // can focus it directly (see `LaunchpadStore.searchField`) when the user
+    // starts typing anywhere in the overlay, not just after clicking it.
+    var onCreate: ((NSSearchField) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(query: $query)
@@ -30,6 +34,7 @@ struct SearchField: NSViewRepresentable {
         field.isBezeled = false
         field.drawsBackground = false
         applyPalette(to: field)
+        onCreate?(field)
         return field
     }
 

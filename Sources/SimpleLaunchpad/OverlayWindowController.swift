@@ -6,6 +6,18 @@ enum OverlayKeyHandling {
     static func shouldClose(forKeyCode keyCode: UInt16) -> Bool {
         keyCode == 53 // Esc
     }
+
+    // True for a keystroke that types visible text — a single printable
+    // character with no Cmd/Ctrl/function modifier held. Used to redirect
+    // focus to the search field the moment the user starts typing, without
+    // also hijacking keyboard shortcuts, arrow keys, or other function keys
+    // (which live in NSEvent's 0xF700–0xF8FF private-use range).
+    static func isTypableCharacter(_ characters: String?, modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        guard modifierFlags.intersection([.command, .control, .function]).isEmpty else { return false }
+        guard let characters, characters.unicodeScalars.count == 1,
+              let scalar = characters.unicodeScalars.first else { return false }
+        return scalar.value >= 0x20 && scalar.value != 0x7F && !(0xF700...0xF8FF).contains(scalar.value)
+    }
 }
 
 // A borderless NSWindow returns `false` from `canBecomeKey`/`canBecomeMain`
@@ -199,6 +211,17 @@ final class OverlayWindowController: NSWindowController {
                 self.moveSelection(dx: -1, dy: 0, isFiltering: isFiltering)
                 return nil
             default:
+                // Real Launchpad-style "type to search": the first
+                // character key redirects keyboard focus to the search
+                // field so it's caught there instead of going nowhere,
+                // then falls through so the newly-focused field's own
+                // text editing handles the keystroke normally.
+                if preferences.showSearchField,
+                   let field = self.store.searchField,
+                   OverlayKeyHandling.isTypableCharacter(event.characters, modifierFlags: event.modifierFlags),
+                   self.window?.firstResponder !== field.currentEditor() {
+                    self.window?.makeFirstResponder(field)
+                }
                 return event
             }
         }

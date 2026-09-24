@@ -67,7 +67,12 @@ struct LaunchpadView: View {
                     if preferences.showSearchField {
                         ZStack {
                             Capsule().fill(palette.pillFill)
-                            SearchField(query: $store.searchQuery, fontSize: 20 * metrics.scale, palette: palette)
+                            SearchField(
+                                query: $store.searchQuery,
+                                fontSize: 20 * metrics.scale,
+                                palette: palette,
+                                onCreate: { store.searchField = $0 }
+                            )
                                 .padding(.horizontal, 16 * metrics.scale)
                         }
                         .frame(width: metrics.cellWidth * 2.8, height: metrics.cellHeight * 0.4)

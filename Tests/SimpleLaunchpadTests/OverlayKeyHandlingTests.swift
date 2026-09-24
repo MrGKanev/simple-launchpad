@@ -30,4 +30,34 @@ final class OverlayKeyHandlingTests: XCTestCase {
     func testOtherKeysDoNotClose() {
         XCTAssertFalse(OverlayKeyHandling.shouldClose(forKeyCode: 0))
     }
+
+    func testPlainLetterIsTypable() {
+        XCTAssertTrue(OverlayKeyHandling.isTypableCharacter("a", modifierFlags: []))
+    }
+
+    func testShiftedLetterIsTypable() {
+        XCTAssertTrue(OverlayKeyHandling.isTypableCharacter("A", modifierFlags: .shift))
+    }
+
+    func testCommandShortcutIsNotTypable() {
+        XCTAssertFalse(OverlayKeyHandling.isTypableCharacter("q", modifierFlags: .command))
+    }
+
+    func testControlShortcutIsNotTypable() {
+        XCTAssertFalse(OverlayKeyHandling.isTypableCharacter("c", modifierFlags: .control))
+    }
+
+    func testArrowFunctionKeyIsNotTypable() {
+        let upArrow = String(UnicodeScalar(NSUpArrowFunctionKey)!)
+        XCTAssertFalse(OverlayKeyHandling.isTypableCharacter(upArrow, modifierFlags: .function))
+    }
+
+    func testEmptyCharactersAreNotTypable() {
+        XCTAssertFalse(OverlayKeyHandling.isTypableCharacter("", modifierFlags: []))
+        XCTAssertFalse(OverlayKeyHandling.isTypableCharacter(nil, modifierFlags: []))
+    }
+
+    func testDeleteCharacterIsNotTypable() {
+        XCTAssertFalse(OverlayKeyHandling.isTypableCharacter("\u{7F}", modifierFlags: []))
+    }
 }

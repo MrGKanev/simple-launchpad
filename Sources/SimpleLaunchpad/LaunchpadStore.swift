@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 struct FolderInfo: Equatable {
     var name: String
@@ -61,6 +62,12 @@ final class LaunchpadStore: ObservableObject {
     // flipping the current Launchpad page (its own global scroll-wheel
     // monitor otherwise sees the exact same horizontal delta).
     @Published var isHoveringCategoryBar: Bool = false
+    // Set by `SearchField` when its underlying `NSSearchField` is created —
+    // lets `OverlayWindowController`'s key monitor redirect focus there the
+    // moment the user starts typing, without the field needing to already
+    // be first responder. Weak since the view (and its NSView) can outlive
+    // or be torn down independently of the store.
+    weak var searchField: NSSearchField?
     // Set by `OverlayWindowController.handleScroll` when a *plain* mouse
     // wheel (vertical-only, no horizontal axis) scrolls while hovering the
     // category bar — `ScrollView(.horizontal)` only ever reacts to a

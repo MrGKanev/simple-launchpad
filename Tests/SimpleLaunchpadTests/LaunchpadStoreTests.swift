@@ -118,4 +118,101 @@ final class LaunchpadStoreTests: XCTestCase {
 
         XCTAssertEqual(result, items)
     }
+
+    // MARK: - filteredResults / isFiltering / availableCategories
+
+    private func store(pages: [[LaunchpadItem]]) -> LaunchpadStore {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("layout.json")
+        let store = LaunchpadStore(persistenceURL: tempURL)
+        store.pages = pages
+        return store
+    }
+
+    func testIsFilteringIsFalseWithNoQueryAndAllScope() {
+        let store = store(pages: [[.app(app("com.a", "Alpha"))]])
+
+        XCTAssertFalse(store.isFiltering)
+    }
+
+    func testIsFilteringIsTrueWithTypedQuery() {
+        let store = store(pages: [[.app(app("com.a", "Alpha"))]])
+        store.searchQuery = "al"
+
+        XCTAssertTrue(store.isFiltering)
+    }
+
+    func testIsFilteringIsTrueForNonAllScopeEvenWithoutQuery() {
+        let store = store(pages: [[.app(app("com.a", "Alpha"))]])
+        store.scope = .recentlyAdded
+
+        XCTAssertTrue(store.isFiltering)
+    }
+
+    func testFilteredResultsMatchesSearchQueryAmongTopLevelApps() {
+        let alpha = app("com.a", "Alpha")
+        let beta = app("com.b", "Beta")
+        let store = store(pages: [[.app(alpha), .app(beta)]])
+        store.searchQuery = "bet"
+
+        XCTAssertEqual(store.filteredResults, [beta])
+    }
+
+    func testFilteredResultsExcludesAppsTuckedInsideFolders() {
+        let alpha = app("com.a", "Alpha")
+        let beta = app("com.b", "Beta")
+        let store = store(pages: [[.app(alpha), .folder(FolderInfo(name: "Stuff", apps: [beta]))]])
+
+        XCTAssertEqual(store.filteredResults, [alpha])
+    }
+
+    func testFilteredResultsScopedToCategoryUsesEffectiveOverride() {
+        var alpha = app("com.a", "Alpha")
+        alpha.category = .productivity
+        let beta = app("com.b", "Beta") // defaults to .other
+        let store = store(pages: [[.app(alpha), .app(beta)]])
+        store.scope = .category(.productivity)
+
+        XCTAssertEqual(store.filteredResults, [alpha])
+    }
+
+    func testFilteredResultsRecentlyAddedOrdersByDateDescendingRegardlessOfSort() {
+        var older = app("com.a", "Older")
+        older.dateAdded = Date(timeIntervalSince1970: 0)
+        var newer = app("com.b", "Newer")
+        newer.dateAdded = Date(timeIntervalSince1970: 1000)
+        let store = store(pages: [[.app(older), .app(newer)]])
+        store.scope = .recentlyAdded
+        store.sortOption = .name // should be ignored for .recentlyAdded
+
+        XCTAssertEqual(store.filteredResults, [newer, older])
+    }
+
+    func testFilteredResultsMostUsedSortOrdersByLaunchCountThenName() {
+        let alpha = app("com.a", "Alpha")
+        let beta = app("com.b", "Beta")
+        let store = store(pages: [[.app(alpha), .app(beta)]])
+        store.sortOption = .mostUsed
+        store.launchCounts = ["com.b": 3]
+
+        XCTAssertEqual(store.filteredResults, [beta, alpha])
+    }
+
+    func testAvailableCategoriesOnlyIncludesCategoriesWithInstalledApps() {
+        var alpha = app("com.a", "Alpha")
+        alpha.category = .productivity
+        let store = store(pages: [[.app(alpha)]])
+
+        XCTAssertEqual(store.availableCategories, [.productivity])
+    }
+
+    func testEffectiveCategoryPrefersManualOverride() {
+        var alpha = app("com.a", "Alpha")
+        alpha.category = .productivity
+        let store = store(pages: [[.app(alpha)]])
+        store.categoryOverrides = ["com.a": .games]
+
+        XCTAssertEqual(store.effectiveCategory(for: alpha), .games)
+    }
 }
