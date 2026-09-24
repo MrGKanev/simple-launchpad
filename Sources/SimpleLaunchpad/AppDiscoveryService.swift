@@ -24,6 +24,11 @@ enum AppDiscoveryService {
 
     static func scan(searchPaths: [String] = defaultSearchPaths, fileManager: FileManager = .default) -> [AppInfo] {
         var results: [AppInfo] = []
+        // Every downstream consumer (LaunchpadStore.merge in particular)
+        // keys apps by bundleIdentifier, so it must be unique here. Real
+        // Macs can have two installs sharing one — e.g. multiple Xcode
+        // versions all report "com.apple.dt.Xcode" — so keep the first hit.
+        var seenBundleIdentifiers: Set<String> = []
         for searchPath in searchPaths {
             guard let entries = try? fileManager.contentsOfDirectory(atPath: searchPath) else { continue }
             for entry in entries where entry.hasSuffix(".app") {
@@ -32,6 +37,7 @@ enum AppDiscoveryService {
                 guard let bundle = Bundle(url: url) else { continue }
                 let fallbackName = url.deletingPathExtension().lastPathComponent
                 let bundleIdentifier = bundle.bundleIdentifier ?? fallbackName
+                guard seenBundleIdentifiers.insert(bundleIdentifier).inserted else { continue }
                 let name = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? fallbackName
                 let categoryType = bundle.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
                 let category = AppCategory(lsApplicationCategoryType: categoryType)

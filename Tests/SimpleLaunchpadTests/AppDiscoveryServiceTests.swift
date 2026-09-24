@@ -59,4 +59,18 @@ final class AppDiscoveryServiceTests: XCTestCase {
 
         XCTAssertTrue(results.isEmpty)
     }
+
+    func testScanDedupesAppsSharingABundleIdentifier() throws {
+        // Real-world case: multiple Xcode installs (e.g. Xcode_16.app,
+        // Xcode_16.2.app) all report the same CFBundleIdentifier since Apple
+        // doesn't vary it by version — this must not crash callers that key
+        // apps by bundleIdentifier (LaunchpadStore.merge in particular).
+        try makeFakeApp(name: "Xcode_16", bundleIdentifier: "com.apple.dt.Xcode", bundleName: "Xcode")
+        try makeFakeApp(name: "Xcode_16.2", bundleIdentifier: "com.apple.dt.Xcode", bundleName: "Xcode")
+
+        let results = AppDiscoveryService.scan(searchPaths: [tempDir.path])
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].bundleIdentifier, "com.apple.dt.Xcode")
+    }
 }
