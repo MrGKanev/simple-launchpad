@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct PageView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var items: [LaunchpadItem]
     let metrics: IconGridMetrics
     var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
@@ -107,11 +108,11 @@ struct PageView: View {
                     onBulkUninstall: onBulkUninstall,
                     onDismiss: { openFolder = nil }
                 )
-                .transition(.scale(scale: 0.92).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.97).combined(with: .opacity))
                 .zIndex(1)
             }
         }
-        .animation(.easeOut(duration: 0.16), value: openFolder)
+        .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.92), value: openFolder != nil)
     }
 
     @ViewBuilder

@@ -24,6 +24,8 @@ final class OverlayWindowController: NSWindowController {
     private let onLaunch: (AppInfo) -> Void
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
+    private var isPresented = false
+    private var visibilityChange = UUID()
     private var lastPageChange = Date.distantPast
     private var lastCategoryBarNudge = Date.distantPast
     // The app Space/Quick Look is currently previewing, if any — see
@@ -109,7 +111,9 @@ final class OverlayWindowController: NSWindowController {
     }
 
     func show() {
-        guard let window else { return }
+        guard let window, !isPresented else { return }
+        isPresented = true
+        visibilityChange = UUID()
 
         // Re-measure the screen on every show, not just at window creation —
         // otherwise a resolution change (new external display, System
@@ -129,19 +133,16 @@ final class OverlayWindowController: NSWindowController {
         // this isn't done via `.preferredColorScheme` instead).
         window.appearance = preferences.appearance.nsAppearance
 
-        window.contentView?.wantsLayer = true
-        window.alphaValue = 0
-        window.contentView?.layer?.transform = CATransform3DMakeScale(0.97, 0.97, 1)
+        if !window.isVisible { window.alphaValue = 0 }
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(Self.showHideDuration)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
-        window.animator().alphaValue = 1
-        window.contentView?.layer?.transform = CATransform3DIdentity
-        CATransaction.commit()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : Self.showHideDuration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+            window.animator().alphaValue = 1
+        }
 
         // Installed/removed alongside window visibility (like the Esc
         // handling below) so paging works anywhere over the overlay, not
@@ -208,6 +209,10 @@ final class OverlayWindowController: NSWindowController {
     }
 
     func hide() {
+        guard let window, isPresented else { return }
+        isPresented = false
+        let change = UUID()
+        visibilityChange = change
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil
@@ -220,26 +225,22 @@ final class OverlayWindowController: NSWindowController {
             panel.orderOut(nil)
         }
 
-        guard let window, window.isVisible else { return }
-        // Clear the search/scope so reopening the overlay later starts
-        // fresh instead of showing whatever was last typed/selected.
-        store.searchQuery = ""
-        store.scope = .all
         store.isHoveringCategoryBar = false
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(Self.showHideDuration)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeIn))
-        CATransaction.setCompletionBlock { [weak window] in
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.10
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self, weak window] in
+            // An interrupted fade must never dismiss a newly reopened window.
+            guard let self, self.visibilityChange == change else { return }
             window?.orderOut(nil)
+            self.store.searchQuery = ""
+            self.store.scope = .all
         }
-        window.animator().alphaValue = 0
-        window.contentView?.layer?.transform = CATransform3DMakeScale(0.97, 0.97, 1)
-        CATransaction.commit()
     }
 
     func toggle() {
-        guard let window else { return }
-        window.isVisible ? hide() : show()
+        isPresented ? hide() : show()
     }
 
     // Debounced so one trackpad scroll gesture (which fires many small

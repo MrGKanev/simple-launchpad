@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct FolderIconView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let folder: FolderInfo
     var metrics: IconGridMetrics = .fixed
     var isSelected: Bool = false
@@ -61,8 +62,8 @@ struct FolderIconView: View {
                 .fill(isSelected ? palette.selectionFill : Color.clear)
         )
         .contentShape(Rectangle())
-        .scaleEffect(isBouncing ? 0.85 : 1.0)
-        .animation(.easeOut(duration: 0.12), value: isBouncing)
+        .scaleEffect(isBouncing && !reduceMotion ? 0.96 : 1.0)
+        .animation(.spring(response: 0.20, dampingFraction: 0.9), value: isBouncing)
         // A plain tap gesture (rather than a `Button`) — `Button` claims the
         // mouse-down before `.onDrag` (applied by the caller) can recognize a
         // drag start, which silently broke dragging apps into folders.

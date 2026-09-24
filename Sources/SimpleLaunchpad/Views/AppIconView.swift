@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct AppIconView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let app: AppInfo
     var metrics: IconGridMetrics = .fixed
     var isSelected: Bool = false
@@ -102,7 +103,7 @@ struct AppIconView: View {
         // disappears in exact lockstep with the background, since they're
         // then just the same pixels — the icon only adds its own quick
         // "pop" on top of that shared fade.
-        .scaleEffect(isLaunching ? 1.15 : 1.0)
+        .scaleEffect(isLaunching && !reduceMotion ? 1.06 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isLaunching)
         // A plain tap gesture (rather than a `Button`) — `Button` claims the
         // mouse-down before `.onDrag` (applied by the caller) can recognize a
