@@ -49,6 +49,28 @@ struct CategoryFilterBar: View {
 
     private let chevronStep = 3
 
+    init(
+        categories: [AppCategory],
+        scope: Binding<LaunchpadScope>,
+        sortOption: Binding<LaunchpadSortOption>,
+        isFiltering: Bool,
+        metrics: IconGridMetrics,
+        palette: LaunchpadPalette,
+        isHovering: Binding<Bool>,
+        scrollNudge: CategoryBarScrollNudge?,
+        onDropBundleIdentifier: @escaping (String, AppCategory) -> Void
+    ) {
+        self.categories = categories
+        self._scope = scope
+        self._sortOption = sortOption
+        self.isFiltering = isFiltering
+        self.metrics = metrics
+        self.palette = palette
+        self._isHovering = isHovering
+        self.scrollNudge = scrollNudge
+        self.onDropBundleIdentifier = onDropBundleIdentifier
+    }
+
     var body: some View {
         VStack(spacing: 8 * metrics.scale) {
             ScrollViewReader { proxy in
@@ -178,6 +200,22 @@ private struct PillButton: View {
     let palette: LaunchpadPalette
     let action: () -> Void
     let onDropBundleIdentifier: ((String) -> Void)?
+
+    init(
+        title: String,
+        isSelected: Bool,
+        metrics: IconGridMetrics,
+        palette: LaunchpadPalette,
+        action: @escaping () -> Void,
+        onDropBundleIdentifier: ((String) -> Void)?
+    ) {
+        self.title = title
+        self.isSelected = isSelected
+        self.metrics = metrics
+        self.palette = palette
+        self.action = action
+        self.onDropBundleIdentifier = onDropBundleIdentifier
+    }
 
     // ponytail: manual `SwiftUI.State<Value>` wiring instead of the `@State`
     // attribute — see the comment in LaunchpadView.swift for why (this SDK's
