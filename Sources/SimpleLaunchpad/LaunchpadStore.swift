@@ -58,8 +58,7 @@ final class LaunchpadStore: ObservableObject {
     }
     // Manual category reassignments (drag an icon onto a different pill),
     // keyed by bundle identifier — overrides whatever `AppInfo.category` was
-    // auto-detected from Info.plist. Persisted separately from `pages` since
-    // it's keyed by app identity, not by grid position.
+    // auto-detected from Info.plist. Saved atomically alongside the layout.
     @Published var categoryOverrides: [String: AppCategory] = [:]
     // Launch counts per bundle identifier, driving the "Most Used" sort.
     @Published var launchCounts: [String: Int] = [:]
@@ -99,7 +98,9 @@ final class LaunchpadStore: ObservableObject {
     // view-local state in `PageView`) so pressing Return on a
     // keyboard-selected folder can open it from `OverlayWindowController`,
     // outside the SwiftUI view tree.
-    @Published var openFolder: FolderInfo?
+    @Published var openFolder: FolderInfo? {
+        didSet { if openFolder == nil { isEditingFolderName = false } }
+    }
     // Set while a folder's name is being edited in place, so
     // `OverlayWindowController` knows to let Return/arrow keys behave like
     // normal text editing instead of driving icon selection/launch.
@@ -111,6 +112,7 @@ final class LaunchpadStore: ObservableObject {
 
     private let itemsPerPage: Int
     private let persistenceURL: URL
+    private var hiddenBundleIdentifiers: Set<String> = []
     private var categoryOverridesURL: URL {
         persistenceURL.deletingLastPathComponent().appendingPathComponent("categoryOverrides.json")
     }
@@ -125,11 +127,13 @@ final class LaunchpadStore: ObservableObject {
 
     func load(discoveredApps: [AppInfo] = AppDiscoveryService.scan()) {
         let savedLayout = LayoutPersistence.load(from: persistenceURL)
+        hiddenBundleIdentifiers = savedLayout?.hiddenBundleIdentifiers ?? []
         pages = Self.merge(discoveredApps: discoveredApps, savedLayout: savedLayout, itemsPerPage: itemsPerPage)
         currentPage = 0
         searchQuery = ""
         scope = .all
-        categoryOverrides = LayoutPersistence.loadDictionary(AppCategory.self, from: categoryOverridesURL)
+        categoryOverrides = savedLayout?.categoryOverrides
+            ?? LayoutPersistence.loadDictionary(AppCategory.self, from: categoryOverridesURL)
         launchCounts = LayoutPersistence.loadDictionary(Int.self, from: launchCountsURL)
     }
 
@@ -145,7 +149,7 @@ final class LaunchpadStore: ObservableObject {
     // whatever the app itself declares.
     func setCategoryOverride(_ category: AppCategory, forBundleIdentifier bundleIdentifier: String) {
         categoryOverrides[bundleIdentifier] = category
-        try? LayoutPersistence.saveDictionary(categoryOverrides, to: categoryOverridesURL)
+        save()
     }
 
     // Called by `AppDelegate` right before actually opening an app, so
@@ -160,13 +164,22 @@ final class LaunchpadStore: ObservableObject {
     // Settings' "Reset Layout" (which confirms before calling this, since
     // it's a one-way trip for any manual organizing).
     func resetLayout(discoveredApps: [AppInfo] = AppDiscoveryService.scan()) {
+        hiddenBundleIdentifiers.removeAll()
+        openFolder = nil
         pages = Self.merge(discoveredApps: discoveredApps, savedLayout: nil, itemsPerPage: itemsPerPage)
         currentPage = 0
         save()
     }
 
     func save() {
-        try? LayoutPersistence.save(Self.encode(pages: pages), to: persistenceURL)
+        try? LayoutPersistence.save(savedLayout, to: persistenceURL)
+    }
+
+    private var savedLayout: LayoutFile {
+        var layout = Self.encode(pages: pages)
+        layout.hiddenBundleIdentifiers = hiddenBundleIdentifiers
+        layout.categoryOverrides = categoryOverrides
+        return layout
     }
 
     // Bundles the grid layout together with manual category overrides —
@@ -175,7 +188,7 @@ final class LaunchpadStore: ObservableObject {
     // deliberately: usage history from one Mac isn't something you'd want
     // silently overwriting another's when importing.
     func exportLayout(to url: URL) throws {
-        let bundle = LayoutExportBundle(layout: Self.encode(pages: pages), categoryOverrides: categoryOverrides)
+        let bundle = LayoutExportBundle(layout: savedLayout, categoryOverrides: categoryOverrides)
         let data = try JSONEncoder().encode(bundle)
         try data.write(to: url, options: .atomic)
     }
@@ -187,13 +200,20 @@ final class LaunchpadStore: ObservableObject {
     func importLayout(from url: URL, discoveredApps: [AppInfo] = AppDiscoveryService.scan()) throws {
         let data = try Data(contentsOf: url)
         let bundle = try JSONDecoder().decode(LayoutExportBundle.self, from: data)
-        pages = Self.merge(discoveredApps: discoveredApps, savedLayout: bundle.layout, itemsPerPage: itemsPerPage)
+        let importedPages = Self.merge(discoveredApps: discoveredApps, savedLayout: bundle.layout, itemsPerPage: itemsPerPage)
+        var importedLayout = Self.encode(pages: importedPages)
+        importedLayout.hiddenBundleIdentifiers = bundle.layout.hiddenBundleIdentifiers ?? []
+        importedLayout.categoryOverrides = bundle.categoryOverrides
+        // One atomic write: a failed import changes neither stored data nor visible state.
+        try LayoutPersistence.save(importedLayout, to: persistenceURL)
+        pages = importedPages
+        hiddenBundleIdentifiers = importedLayout.hiddenBundleIdentifiers ?? []
         categoryOverrides = bundle.categoryOverrides
         currentPage = 0
         searchQuery = ""
         scope = .all
-        save()
-        try? LayoutPersistence.saveDictionary(categoryOverrides, to: categoryOverridesURL)
+        openFolder = nil
+        clearSelection()
     }
 
     private var trimmedSearchQuery: String {
@@ -275,11 +295,12 @@ final class LaunchpadStore: ObservableObject {
     // adjusted so paging never lands on a blank grid), and the open folder
     // sheet (a separate snapshot, not a live view into `pages`) is kept in
     // sync if the removed app was inside it.
-    func removeApp(_ app: AppInfo) {
+    func removeApp(_ app: AppInfo, hide: Bool = true) {
         for pageIndex in pages.indices {
             for itemIndex in pages[pageIndex].indices {
                 switch pages[pageIndex][itemIndex] {
                 case .app(let existing) where existing.bundleIdentifier == app.bundleIdentifier:
+                    if hide { hiddenBundleIdentifiers.insert(app.bundleIdentifier) }
                     pages[pageIndex].remove(at: itemIndex)
                     finishRemoval(pageIndex: pageIndex)
                     return
@@ -287,6 +308,7 @@ final class LaunchpadStore: ObservableObject {
                     guard let appIndex = folder.apps.firstIndex(where: { $0.bundleIdentifier == app.bundleIdentifier }) else {
                         continue
                     }
+                    if hide { hiddenBundleIdentifiers.insert(app.bundleIdentifier) }
                     let wasOpenFolder = openFolder?.id == folder.id
                     folder.apps.remove(at: appIndex)
                     if folder.apps.isEmpty {
@@ -322,7 +344,7 @@ final class LaunchpadStore: ObservableObject {
     // uninstall never leaves a dangling icon for an app that's still there.
     func uninstallApp(_ app: AppInfo) {
         guard AppUninstaller.moveToTrash(app) else { return }
-        removeApp(app)
+        removeApp(app, hide: false)
     }
 
     func toggleSelection(_ app: AppInfo) {
@@ -355,7 +377,7 @@ final class LaunchpadStore: ObservableObject {
     func uninstallSelectedApps(trash: ([AppInfo]) -> [AppInfo] = AppUninstaller.moveToTrash) {
         let removed = trash(selectedApps)
         for app in removed {
-            removeApp(app)
+            removeApp(app, hide: false)
             selectedBundleIdentifiers.remove(app.bundleIdentifier)
         }
     }
@@ -368,6 +390,8 @@ final class LaunchpadStore: ObservableObject {
     // and insert) instead of removing one at a time, so an earlier removal
     // pruning an empty page never invalidates an index computed earlier.
     func mergeSelectedApps(intoTarget targetItem: LaunchpadItem) {
+        // Drop callbacks can arrive after the target was removed or changed.
+        guard pages.contains(where: { $0.contains { $0.dragID == targetItem.dragID } }) else { return }
         let targetAnchorID: String
         let excludeIDs: Set<String>
         switch targetItem {
@@ -401,6 +425,7 @@ final class LaunchpadStore: ObservableObject {
                 }
             }
         }
+        guard !collectedApps.isEmpty else { return }
         workingPages.removeAll { $0.isEmpty }
 
         search: for pageIndex in workingPages.indices {
@@ -458,6 +483,8 @@ final class LaunchpadStore: ObservableObject {
     static let systemUtilitiesFolderName = "Other"
 
     static func merge(discoveredApps: [AppInfo], savedLayout: LayoutFile?, itemsPerPage: Int) -> [[LaunchpadItem]] {
+        let hidden = savedLayout?.hiddenBundleIdentifiers ?? []
+        let discoveredApps = discoveredApps.filter { !hidden.contains($0.bundleIdentifier) }
         var appsByID = Dictionary(uniqueKeysWithValues: discoveredApps.map { ($0.bundleIdentifier, $0) })
         var orderedItems: [LaunchpadItem] = []
 

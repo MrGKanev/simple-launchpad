@@ -200,7 +200,7 @@ struct SettingsView: View {
     private func confirmAndResetLayout() {
         let alert = NSAlert()
         alert.messageText = "Reset the Launchpad layout?"
-        alert.informativeText = "This rebuilds the grid alphabetically and breaks up every folder. This can't be undone."
+        alert.informativeText = "This restores hidden apps, rebuilds the grid alphabetically and breaks up every folder. This can't be undone."
         alert.alertStyle = .warning
         let resetButton = alert.addButton(withTitle: "Reset Layout")
         resetButton.hasDestructiveAction = true

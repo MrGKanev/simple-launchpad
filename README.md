@@ -58,6 +58,12 @@ swift run
 swift test
 ```
 
+For focused regression checks without XCTest (Command Line Tools only):
+
+```sh
+bash Scripts/check-regressions.sh
+```
+
 ## Create a distributable .app
 
 ```sh

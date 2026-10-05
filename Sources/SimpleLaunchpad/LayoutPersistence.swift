@@ -2,6 +2,9 @@ import Foundation
 
 struct LayoutFile: Codable, Equatable {
     var pages: [[LayoutItem]]
+    // Optional fields preserve compatibility with existing layouts and exports.
+    var hiddenBundleIdentifiers: Set<String>? = nil
+    var categoryOverrides: [String: AppCategory]? = nil
 }
 
 // What Settings' "Export Layout…"/"Import Layout…" reads and writes — see
