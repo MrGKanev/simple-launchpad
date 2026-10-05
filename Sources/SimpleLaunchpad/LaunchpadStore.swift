@@ -10,6 +10,13 @@ struct FolderInfo: Equatable {
 enum LaunchpadItem: Equatable {
     case app(AppInfo)
     case folder(FolderInfo)
+
+    var dragID: String {
+        switch self {
+        case .app(let app): return "APP:" + app.bundleIdentifier
+        case .folder(let folder): return "FOLDER:" + folder.id
+        }
+    }
 }
 
 final class LaunchpadStore: ObservableObject {
@@ -345,11 +352,12 @@ final class LaunchpadStore: ObservableObject {
         clearSelection()
     }
 
-    func uninstallSelectedApps() {
-        let apps = selectedApps
-        guard !apps.isEmpty, AppUninstaller.moveToTrash(apps) else { return }
-        for app in apps { removeApp(app) }
-        clearSelection()
+    func uninstallSelectedApps(trash: ([AppInfo]) -> [AppInfo] = AppUninstaller.moveToTrash) {
+        let removed = trash(selectedApps)
+        for app in removed {
+            removeApp(app)
+            selectedBundleIdentifiers.remove(app.bundleIdentifier)
+        }
     }
 
     // Merges every multi-selected app (except the target itself) into the
@@ -490,6 +498,41 @@ final class LaunchpadStore: ObservableObject {
         return stride(from: 0, to: orderedItems.count, by: itemsPerPage).map {
             Array(orderedItems[$0..<min($0 + itemsPerPage, orderedItems.count)])
         }
+    }
+
+    func moveItem(_ sourceID: String, onto targetID: String, merge: Bool) {
+        guard sourceID != targetID,
+              let sourcePage = pages.firstIndex(where: { $0.contains { $0.dragID == sourceID } }),
+              let sourceIndex = pages[sourcePage].firstIndex(where: { $0.dragID == sourceID }),
+              let targetPage = pages.firstIndex(where: { $0.contains { $0.dragID == targetID } }),
+              let targetIndex = pages[targetPage].firstIndex(where: { $0.dragID == targetID }) else { return }
+        let source = pages[sourcePage][sourceIndex]
+        if merge, case .app = source {
+            pages[targetPage][targetIndex] = Self.mergingIntoFolder(
+                sourceIndex: 1, targetIndex: 0, items: [pages[targetPage][targetIndex], source]
+            )[0]
+            pages[sourcePage].remove(at: sourceIndex)
+        } else {
+            pages[sourcePage].remove(at: sourceIndex)
+            // Same-page drops retain the existing before/after reorder behavior.
+            let insertion = targetIndex
+            pages[targetPage].insert(source, at: insertion)
+        }
+        // Carry overflow forward so every page still fits the visible grid.
+        var page = targetPage
+        while page < pages.count {
+            if pages[page].count > itemsPerPage {
+                let overflow = pages[page].removeLast()
+                if page + 1 == pages.count { pages.append([]) }
+                pages[page + 1].insert(overflow, at: 0)
+            }
+            page += 1
+        }
+        let destinationPage = targetPage - pages[..<targetPage].filter { $0.isEmpty }.count
+        pages.removeAll { $0.isEmpty }
+        currentPage = destinationPage
+        openFolder = nil
+        save()
     }
 
     static func mergingIntoFolder(sourceIndex: Int, targetIndex: Int, items: [LaunchpadItem]) -> [LaunchpadItem] {

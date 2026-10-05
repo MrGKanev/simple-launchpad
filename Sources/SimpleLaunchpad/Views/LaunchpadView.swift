@@ -149,13 +149,7 @@ struct LaunchpadView: View {
                         if store.pages.indices.contains(store.currentPage) {
                             let pageIndex = store.currentPage
                             PageView(
-                                items: Binding(
-                                    get: { store.pages[pageIndex] },
-                                    set: { newValue in
-                                        store.pages[pageIndex] = newValue
-                                        store.save()
-                                    }
-                                ),
+                                items: store.pages[pageIndex],
                                 metrics: metrics,
                                 palette: palette,
                                 selectedIndex: store.selectedIndex,
@@ -166,14 +160,8 @@ struct LaunchpadView: View {
                                 onUninstallApp: { app in store.uninstallApp(app) },
                                 onRenameFolder: { folder, newName in store.renameFolder(folder, to: newName) },
                                 onEditingFolderNameChanged: { editing in store.isEditingFolderName = editing },
-                                onMergeIntoFolder: { source, target in
-                                    let merged = LaunchpadStore.mergingIntoFolder(
-                                        sourceIndex: source,
-                                        targetIndex: target,
-                                        items: store.pages[pageIndex]
-                                    )
-                                    store.pages[pageIndex] = merged
-                                    store.save()
+                                onMoveItem: { source, target, merge in
+                                    store.moveItem(source, onto: target, merge: merge)
                                 },
                                 selectedBundleIdentifiers: store.selectedBundleIdentifiers,
                                 onToggleSelectApp: { app in store.toggleSelection(app) },

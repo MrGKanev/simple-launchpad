@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 struct PageView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Binding var items: [LaunchpadItem]
+    let items: [LaunchpadItem]
     let metrics: IconGridMetrics
     var palette: LaunchpadPalette = LaunchpadPalette(isDark: true)
     let selectedIndex: Int
@@ -25,7 +25,7 @@ struct PageView: View {
     let onUninstallApp: (AppInfo) -> Void
     let onRenameFolder: (FolderInfo, String) -> Void
     let onEditingFolderNameChanged: (Bool) -> Void
-    let onMergeIntoFolder: (Int, Int) -> Void
+    let onMoveItem: (String, String, Bool) -> Void
     // Cmd/Shift-click multi-select — see `AppIconView` and
     // `LaunchpadStore.selectedBundleIdentifiers`.
     let selectedBundleIdentifiers: Set<String>
@@ -58,12 +58,11 @@ struct PageView: View {
                                selectedBundleIdentifiers.contains(app.bundleIdentifier) {
                                 return NSItemProvider(object: "BULK:\(app.bundleIdentifier)" as NSString)
                             }
-                            return NSItemProvider(object: String(index) as NSString)
+                            return NSItemProvider(object: item.dragID as NSString)
                         }
                         .onDrop(of: [.text], delegate: ItemDropDelegate(
-                            targetIndex: index,
-                            items: $items,
-                            onMergeIntoFolder: onMergeIntoFolder,
+                            target: item,
+                            onMoveItem: onMoveItem,
                             onBulkMergeIntoTarget: onBulkMergeIntoTarget
                         ))
                 }
@@ -145,25 +144,24 @@ struct PageView: View {
     }
 }
 
-// ponytail: hover state is a static dictionary keyed by target index, not per-drag-session
+// ponytail: hover state is a static dictionary keyed by target identity, not per-drag-session
 // state, because DropDelegate structs are recreated on every render. Fine for a single-user,
 // single-drag-at-a-time grid; would need real per-session state if concurrent drags were possible.
 private struct ItemDropDelegate: DropDelegate {
-    let targetIndex: Int
-    @Binding var items: [LaunchpadItem]
-    let onMergeIntoFolder: (Int, Int) -> Void
+    let target: LaunchpadItem
+    let onMoveItem: (String, String, Bool) -> Void
     let onBulkMergeIntoTarget: (LaunchpadItem) -> Void
 
     private static let mergeHoldThreshold: TimeInterval = 0.6
-    private static var hoverStartedAt: [Int: Date] = [:]
+    private static var hoverStartedAt: [String: Date] = [:]
 
     func dropEntered(info: DropInfo) {
-        Self.hoverStartedAt[targetIndex] = Date()
+        Self.hoverStartedAt[target.dragID] = Date()
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        let hoverDuration = Self.hoverStartedAt[targetIndex].map { Date().timeIntervalSince($0) } ?? 0
-        Self.hoverStartedAt[targetIndex] = nil
+        let hoverDuration = Self.hoverStartedAt[target.dragID].map { Date().timeIntervalSince($0) } ?? 0
+        Self.hoverStartedAt[target.dragID] = nil
 
         guard let provider = info.itemProviders(for: [.text]).first else { return false }
         provider.loadObject(ofClass: NSString.self) { reading, _ in
@@ -171,32 +169,14 @@ private struct ItemDropDelegate: DropDelegate {
 
             if string.hasPrefix("BULK:") {
                 DispatchQueue.main.async {
-                    guard items.indices.contains(targetIndex) else { return }
-                    onBulkMergeIntoTarget(items[targetIndex])
+                    onBulkMergeIntoTarget(target)
                 }
                 return
             }
 
-            guard let sourceIndex = Int(string) else { return }
+            guard string.hasPrefix("APP:") || string.hasPrefix("FOLDER:") else { return }
             DispatchQueue.main.async {
-                guard sourceIndex != targetIndex,
-                      items.indices.contains(sourceIndex),
-                      items.indices.contains(targetIndex) else { return }
-
-                let isMergeable: Bool = {
-                    if case .app = items[sourceIndex] {
-                        if case .app = items[targetIndex] { return true }
-                        if case .folder = items[targetIndex] { return true }
-                    }
-                    return false
-                }()
-
-                if hoverDuration >= Self.mergeHoldThreshold && isMergeable {
-                    onMergeIntoFolder(sourceIndex, targetIndex)
-                } else {
-                    let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
-                    items.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destination)
-                }
+                onMoveItem(string, target.dragID, hoverDuration >= Self.mergeHoldThreshold)
             }
         }
         return true
@@ -217,6 +197,7 @@ private struct EdgePageFlipDelegate: DropDelegate {
     private static var pendingFlip: DispatchWorkItem?
 
     func dropEntered(info: DropInfo) {
+        Self.pendingFlip?.cancel()
         let workItem = DispatchWorkItem(block: onFlip)
         Self.pendingFlip = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.holdThreshold, execute: workItem)

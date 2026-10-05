@@ -48,13 +48,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        registerHotKey()
         // Re-register (unregistering the old one first, via a fresh
         // `HotKeyManager` whose `deinit` unregisters) whenever the user
         // records a new shortcut in Settings.
         hotKeyCancellable = Publishers.CombineLatest(preferences.$hotKeyCode, preferences.$hotKeyModifiers)
-            .dropFirst()
-            .sink { [weak self] _, _ in self?.registerHotKey() }
+            .sink { [weak self] code, modifiers in
+                self?.registerHotKey(keyCode: code, modifiers: modifiers)
+            }
 
         overlayController.show()
     }
@@ -122,10 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController.show()
     }
 
-    private func registerHotKey() {
+    private func registerHotKey(keyCode: UInt32, modifiers: UInt32) {
         hotKeyManager = HotKeyManager(onTrigger: { [weak self] in
             self?.overlayController.toggle()
         })
-        hotKeyManager.register(keyCode: preferences.hotKeyCode, modifiers: preferences.hotKeyModifiers)
+        hotKeyManager.register(keyCode: keyCode, modifiers: modifiers)
     }
 }

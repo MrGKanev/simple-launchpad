@@ -76,6 +76,26 @@ enum UpdateChecker {
     static func downloadAndInstall(_ release: ReleaseInfo) async throws {
         let (tempZipURL, _) = try await URLSession.shared.download(from: release.zipAssetURL)
 
+        let installedAppURL = Bundle.main.bundleURL
+        try await installArchive(tempZipURL, at: installedAppURL)
+        NSWorkspace.shared.open(installedAppURL)
+        NSApp.terminate(nil)
+    }
+
+    static func installArchive(_ tempZipURL: URL, at installedAppURL: URL) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try installArchiveSynchronously(tempZipURL, at: installedAppURL)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private static func installArchiveSynchronously(_ tempZipURL: URL, at installedAppURL: URL) throws {
         let workDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workDir) }
@@ -91,18 +111,14 @@ enum UpdateChecker {
 
         try run("/usr/bin/xattr", ["-cr", extractedApp.path])
 
-        let installedAppURL = Bundle.main.bundleURL
         // Replaces the installed app's contents in place while keeping its
         // location/name — the standard atomic-swap API, same trick Sparkle
         // itself uses to update a running app out from under itself.
         _ = try FileManager.default.replaceItemAt(installedAppURL, withItemAt: extractedApp)
-
-        NSWorkspace.shared.open(installedAppURL)
-        NSApp.terminate(nil)
     }
 
     @discardableResult
-    private static func run(_ launchPath: String, _ arguments: [String]) throws -> String {
+    static func run(_ launchPath: String, _ arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = arguments
@@ -110,8 +126,8 @@ enum UpdateChecker {
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
-        process.waitUntilExit()
         let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             throw NSError(
                 domain: "UpdateChecker",

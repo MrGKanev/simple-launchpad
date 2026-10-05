@@ -30,9 +30,9 @@ enum AppUninstaller {
     // rather than one alert per app. Trashes whatever it can; any failures
     // are reported together at the end instead of interrupting the batch.
     @discardableResult
-    static func moveToTrash(_ apps: [AppInfo]) -> Bool {
-        guard !apps.isEmpty else { return false }
-        if apps.count == 1 { return moveToTrash(apps[0]) }
+    static func moveToTrash(_ apps: [AppInfo]) -> [AppInfo] {
+        guard !apps.isEmpty else { return [] }
+        if apps.count == 1 { return moveToTrash(apps[0]) ? apps : [] }
 
         let alert = NSAlert()
         alert.messageText = "Move \(apps.count) apps to the Trash?"
@@ -42,15 +42,10 @@ enum AppUninstaller {
         trashButton.hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        guard alert.runModal() == .alertFirstButtonReturn else { return [] }
 
-        var failures: [String] = []
-        for app in apps {
-            do {
-                try FileManager.default.trashItem(at: app.path, resultingItemURL: nil)
-            } catch {
-                failures.append(app.name)
-            }
+        let (removed, failures) = trashApps(apps) { app in
+            try FileManager.default.trashItem(at: app.path, resultingItemURL: nil)
         }
         if !failures.isEmpty {
             let errorAlert = NSAlert()
@@ -59,6 +54,20 @@ enum AppUninstaller {
             errorAlert.alertStyle = .warning
             errorAlert.runModal()
         }
-        return true
+        return removed
+    }
+
+    static func trashApps(_ apps: [AppInfo], trash: (AppInfo) throws -> Void) -> ([AppInfo], [String]) {
+        var removed: [AppInfo] = []
+        var failures: [String] = []
+        for app in apps {
+            do {
+                try trash(app)
+                removed.append(app)
+            } catch {
+                failures.append(app.name)
+            }
+        }
+        return (removed, failures)
     }
 }

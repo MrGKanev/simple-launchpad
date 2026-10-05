@@ -81,3 +81,10 @@ for a first install) and a `.zip` (what the in-app updater fetches). The
 in-app "Check for Updates" button reads the release, and if it's newer than
 the running version, downloads the `.zip`, strips the quarantine flag (the
 app isn't notarized), and swaps itself in place.
+
+## Agent skills
+
+Repository-local skills live in `.agents/skills`: `simple-launchpad-dev-build`,
+`simple-launchpad-release`, `swift-concurrency-pro`, `swift-testing-pro` and `swiftui-pro`.
+They are configured for Simple Launchpad's Swift tools 5.9, macOS 13 and XCTest setup.
+The Swift skills retain their upstream MIT licenses and reference guides.
