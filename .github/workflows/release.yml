@@ -12,6 +12,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+      - name: Check tag matches app version
+        run: |
+          v=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Sources/SimpleLaunchpad/Resources/Info.plist)
+          [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "Tag $GITHUB_REF_NAME != Info.plist $v"; exit 1; }
+      - name: Test
+        run: swift test
       - name: Build app bundle
         run: sh Scripts/build-app-bundle.sh
       - name: Zip app bundle

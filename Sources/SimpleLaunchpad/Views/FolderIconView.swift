@@ -53,7 +53,7 @@ struct FolderIconView: View {
             .background(RoundedRectangle(cornerRadius: metrics.imageSize * 0.19).fill(palette.folderTileFill))
             Text(folder.name)
                 .font(metrics.font)
-                .foregroundColor(palette.text)
+                .foregroundStyle(palette.text)
                 .lineLimit(1)
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
@@ -62,6 +62,10 @@ struct FolderIconView: View {
                 .fill(isSelected ? palette.selectionFill : Color.clear)
         )
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(folder.name), folder")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onTap() }
         .scaleEffect(isBouncing && !reduceMotion ? 0.96 : 1.0)
         .animation(.spring(response: 0.20, dampingFraction: 0.9), value: isBouncing)
         // A plain tap gesture (rather than a `Button`) — `Button` claims the
@@ -69,7 +73,10 @@ struct FolderIconView: View {
         // drag start, which silently broke dragging apps into folders.
         .onTapGesture {
             isBouncing = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { isBouncing = false }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                isBouncing = false
+            }
             onTap()
         }
     }

@@ -19,6 +19,7 @@ enum LaunchpadItem: Equatable {
     }
 }
 
+@MainActor
 final class LaunchpadStore: ObservableObject {
     @Published var pages: [[LaunchpadItem]] = []
 

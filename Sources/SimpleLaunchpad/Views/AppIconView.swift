@@ -75,7 +75,7 @@ struct AppIconView: View {
                 .frame(width: metrics.imageSize, height: metrics.imageSize)
             Text(app.name)
                 .font(metrics.font)
-                .foregroundColor(palette.text)
+                .foregroundStyle(palette.text)
                 .lineLimit(1)
         }
         .frame(width: metrics.cellWidth, height: metrics.cellHeight)
@@ -93,6 +93,10 @@ struct AppIconView: View {
             }
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(app.name)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onTap() }
         // Scale only — no separate opacity fade here. The tapped icon fading
         // out *with its own animation curve*, racing the whole overlay
         // window's *own* alpha fade (a completely separate Core Animation
@@ -123,7 +127,10 @@ struct AppIconView: View {
             // `OverlayWindowController.showHideDuration`) — has finished, so
             // the icon isn't left enlarged the next time the overlay reopens
             // on the same item, and doesn't visibly snap back mid-fade.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { isLaunching = false }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 280_000_000)
+                isLaunching = false
+            }
         }
         .contextMenu {
             if isMultiSelected, selectionCount > 1 {

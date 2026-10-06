@@ -37,6 +37,7 @@ enum DisplayPreference: Equatable, Hashable {
 // plain Combine property wrapper, not one of the newer macro-based ones) is
 // safe to use directly under this project's toolchain — see the `@State`
 // caveat noted elsewhere for what isn't.
+@MainActor
 final class AppPreferences: ObservableObject {
     private static let showMenuBarIconKey = "showMenuBarIcon"
     private static let hotKeyCodeKey = "hotKeyCode"

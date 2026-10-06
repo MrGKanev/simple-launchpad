@@ -256,11 +256,14 @@ final class OverlayWindowController: NSWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             window.animator().alphaValue = 0
         } completionHandler: { [weak self, weak window] in
-            // An interrupted fade must never dismiss a newly reopened window.
-            guard let self, self.visibilityChange == change else { return }
-            window?.orderOut(nil)
-            self.store.searchQuery = ""
-            self.store.scope = .all
+            // The handler is @Sendable; hop to the main actor to touch the store.
+            Task { @MainActor in
+                // An interrupted fade must never dismiss a newly reopened window.
+                guard let self, self.visibilityChange == change else { return }
+                window?.orderOut(nil)
+                self.store.searchQuery = ""
+                self.store.scope = .all
+            }
         }
     }
 

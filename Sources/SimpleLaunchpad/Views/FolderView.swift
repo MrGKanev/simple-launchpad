@@ -182,14 +182,14 @@ struct FolderView: View {
             TextField("Folder Name", text: Binding(get: { editedName }, set: { editedName = $0 }))
                 .textFieldStyle(.plain)
                 .font(titleFont)
-                .foregroundColor(palette.text)
+                .foregroundStyle(palette.text)
                 .multilineTextAlignment(.center)
                 .frame(width: popupWidth * 0.6)
                 .onSubmit { commitRename() }
         } else {
             Text(folder.name)
                 .font(titleFont)
-                .foregroundColor(palette.text)
+                .foregroundStyle(palette.text)
                 .onTapGesture {
                     editedName = folder.name
                     isEditingName = true

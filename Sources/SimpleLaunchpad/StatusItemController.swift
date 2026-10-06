@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 
+@MainActor
 final class StatusItemController {
     private let statusItem: NSStatusItem
     private let onToggle: () -> Void

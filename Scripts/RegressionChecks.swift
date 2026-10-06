@@ -2,6 +2,7 @@
 import Foundation
 import Combine
 
+@MainActor
 @main
 struct RegressionChecks {
     @MainActor

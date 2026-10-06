@@ -65,7 +65,7 @@ struct SettingsView: View {
                 // right-click menu still reaches Settings.
                 Text("Reopen anytime with the shortcut below, or from the Dock icon's right-click menu.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             HStack {
@@ -111,7 +111,7 @@ struct SettingsView: View {
                 Toggle("Show category bar", isOn: $preferences.showCategoryBar)
                 Text("Turn either off for a leaner, icons-only grid.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             Divider()
@@ -125,13 +125,13 @@ struct SettingsView: View {
 
                     Text(UpdateChecker.currentVersion)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
 
                 if !updateStatus.isEmpty {
                     Text(updateStatus)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
 
                 Link("Download the latest version on GitHub",
@@ -149,11 +149,11 @@ struct SettingsView: View {
                 if !layoutIOStatus.isEmpty {
                     Text(layoutIOStatus)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 Text("Save or load your grid — pages, folders, and category tweaks — to move it to another Mac.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -162,7 +162,7 @@ struct SettingsView: View {
                 }
                 Text("Rebuilds the grid alphabetically — discards custom folders and ordering.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(24)
@@ -215,7 +215,7 @@ struct SettingsView: View {
     private func checkForUpdates() {
         isCheckingForUpdates = true
         updateStatus = ""
-        Task {
+        Task { @MainActor in
             do {
                 guard let release = try await UpdateChecker.fetchLatestRelease() else {
                     updateStatus = "Could not check for updates."

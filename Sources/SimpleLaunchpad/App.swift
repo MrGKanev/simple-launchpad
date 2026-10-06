@@ -31,7 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // register before the whole screen starts leaving too — tap,
             // *then* dismiss, instead of both starting at once and blurring
             // together.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 80_000_000)
                 self?.overlayController.hide()
             }
         })

@@ -215,6 +215,9 @@ struct CategoryFilterBar: View {
             .background(Circle().fill(palette.pillSelectedFill))
             .contentShape(Circle())
             .onTapGesture(perform: action)
+            .accessibilityLabel(systemName.contains("left") ? "Scroll categories back" : "Scroll categories forward")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { action() }
     }
 }
 
@@ -278,6 +281,9 @@ private struct PillButton: View {
             )
             .contentShape(Capsule())
             .onTapGesture(perform: action)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { action() }
             .modifier(DropModifier(isTargeted: Binding(
                 get: { isDropTargeted },
                 set: { isDropTargeted = $0 }

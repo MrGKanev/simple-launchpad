@@ -13,3 +13,5 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Regression checks
+        run: bash Scripts/check-regressions.sh

@@ -1,6 +1,7 @@
 import XCTest
 @testable import SimpleLaunchpad
 
+@MainActor
 final class LaunchpadStoreTests: XCTestCase {
     private func app(_ id: String, _ name: String) -> AppInfo {
         AppInfo(bundleIdentifier: id, name: name, path: URL(fileURLWithPath: "/Applications/\(name).app"))

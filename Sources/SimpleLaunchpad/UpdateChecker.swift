@@ -18,11 +18,13 @@ enum UpdateChecker {
     enum UpdateError: LocalizedError {
         case noZipAsset
         case noAppInZip
+        case httpStatus(Int)
 
         var errorDescription: String? {
             switch self {
             case .noZipAsset: return "The latest release has no downloadable build attached."
             case .noAppInZip: return "The downloaded update didn't contain an app."
+            case .httpStatus(let code): return "GitHub responded with HTTP \(code)."
             }
         }
     }
@@ -47,8 +49,20 @@ enum UpdateChecker {
     static func fetchLatestRelease() async throws -> ReleaseInfo? {
         var request = URLRequest(url: latestReleaseAPIURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkStatus(response)
+        return try parseRelease(data)
+    }
 
+    // Rate limits and missing releases come back as JSON error bodies;
+    // surface the status instead of treating them as "no release".
+    static func checkStatus(_ response: URLResponse) throws {
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw UpdateError.httpStatus(http.statusCode)
+        }
+    }
+
+    static func parseRelease(_ data: Data) throws -> ReleaseInfo? {
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let tagName = json["tag_name"] as? String,
@@ -74,7 +88,8 @@ enum UpdateChecker {
     // place, then relaunches the new one and quits this process.
     @MainActor
     static func downloadAndInstall(_ release: ReleaseInfo) async throws {
-        let (tempZipURL, _) = try await URLSession.shared.download(from: release.zipAssetURL)
+        let (tempZipURL, response) = try await URLSession.shared.download(from: release.zipAssetURL)
+        try checkStatus(response)
 
         let installedAppURL = Bundle.main.bundleURL
         try await installArchive(tempZipURL, at: installedAppURL)
@@ -83,19 +98,13 @@ enum UpdateChecker {
     }
 
     static func installArchive(_ tempZipURL: URL, at installedAppURL: URL) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try installArchiveSynchronously(tempZipURL, at: installedAppURL)
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        // Blocking Process work stays off the cooperative pool.
+        try await Task.detached(priority: .userInitiated) {
+            try installArchiveSynchronously(tempZipURL, at: installedAppURL)
+        }.value
     }
 
-    private static func installArchiveSynchronously(_ tempZipURL: URL, at installedAppURL: URL) throws {
+    static func installArchiveSynchronously(_ tempZipURL: URL, at installedAppURL: URL) throws {
         let workDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workDir) }
